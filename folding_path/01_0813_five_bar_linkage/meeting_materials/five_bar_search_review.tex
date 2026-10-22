@@ -1,0 +1,687 @@
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usepackage[haranoaji]{luatexja-preset}
+\usepackage{fontspec}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{tikz}
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+\usepackage{ragged2e}
+\usetikzlibrary{arrows.meta,calc,positioning,backgrounds}
+
+\definecolor{Ink}{HTML}{16324F}
+\definecolor{Blue}{HTML}{2F80ED}
+\definecolor{Orange}{HTML}{F2994A}
+\definecolor{Purple}{HTML}{8659C4}
+\definecolor{Teal}{HTML}{148F87}
+\definecolor{Red}{HTML}{D85855}
+\definecolor{Muted}{HTML}{687386}
+\definecolor{Line}{HTML}{D8DEE8}
+\definecolor{Paper}{HTML}{F7F9FC}
+\definecolor{PaleBlue}{HTML}{EAF2FD}
+\definecolor{PaleOrange}{HTML}{FEF1E3}
+\definecolor{PaleTeal}{HTML}{E8F5F2}
+
+\setbeamercolor{normal text}{fg=Ink,bg=white}
+\setbeamercolor{frametitle}{fg=Ink,bg=white}
+\setbeamercolor{structure}{fg=Blue}
+\setbeamercolor{itemize item}{fg=Blue}
+\setbeamercolor{itemize subitem}{fg=Teal}
+\setbeamertemplate{navigation symbols}{}
+\setbeamersize{text margin left=.62cm,text margin right=.62cm}
+\setbeamertemplate{itemize item}{\raise0.15ex\hbox{\scriptsize$\blacktriangleright$}}
+\setbeamertemplate{itemize subitem}{\raise0.2ex\hbox{\tiny$\bullet$}}
+\setbeamertemplate{frametitle}{%
+  \vspace{0.18cm}%
+  \hspace{0.15cm}\insertframetitle\par
+  \vspace{0.05cm}\hspace{0.16cm}{\color{Teal}\rule{2.2cm}{1.2pt}}%
+}
+\setbeamerfont{title}{series=\bfseries,size=\fontsize{28}{32}}
+\setbeamerfont{subtitle}{size=\fontsize{14}{17}}
+\setbeamerfont{frametitle}{series=\bfseries,size=\fontsize{16.2}{18.2}}
+\setbeamerfont{normal text}{size=\fontsize{9.6}{11.8}}
+\setbeamerfont{footline}{size=\fontsize{6.8}{8}}
+
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+  \begin{beamercolorbox}[wd=.84\paperwidth,ht=2.5ex,dp=1.0ex,leftskip=.45cm]{normal text}%
+    \color{Muted}\insertshorttitle
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.16\paperwidth,ht=2.5ex,dp=1.0ex,rightskip=.45cm plus1fil]{normal text}%
+    \color{Muted}\hfill\insertframenumber\,/\,15
+  \end{beamercolorbox}}%
+}
+
+\newcommand{\smalltag}[2][Blue]{%
+  \tikz[baseline=(n.base)]\node[fill=#1!10,draw=#1!55,rounded corners=1.2pt,
+    inner xsep=4pt,inner ysep=1.3pt,text=#1,font=\fontsize{6.7}{7.5}\selectfont\bfseries] (n) {#2};%
+}
+\newcommand{\claim}[1]{%
+  \begin{beamercolorbox}[wd=\linewidth,sep=0.11cm,leftskip=0.13cm]{block body}%
+  \color{Ink}\bfseries #1
+  \end{beamercolorbox}%
+}
+\newcommand{\sourcefoot}[1]{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \node[anchor=south west,text=Muted,align=left,text width=14.75cm,
+      font=\fontsize{5.6}{6.4}\selectfont] at
+      ([xshift=.62cm,yshift=.36cm]current page.south west) {出典・条件：#1};
+  \end{tikzpicture}%
+}
+\newcommand{\figpath}{figures/}
+\newcommand{\safeinclude}[2][]{%
+  \IfFileExists{#2}{\includegraphics[#1]{#2}}{%
+    \begin{tikzpicture}\node[draw=Line,fill=Paper,minimum width=.94\linewidth,
+      minimum height=3.2cm,text=Muted,align=center]{figure pending\\\texttt{#2}};\end{tikzpicture}}%
+}
+\newcommand{\yes}{\textcolor{Teal}{\bfseries$\checkmark$}}
+\newcommand{\no}{\textcolor{Red}{\bfseries$\times$}}
+\newcommand{\maybe}{\textcolor{Orange}{\bfseries$\triangle$}}
+
+\title[Five-bar探索アルゴリズム検討史]{Five-barを効率的に折りたたむ探索アルゴリズム}
+\subtitle{GPによる連続回帰から、可変長持続摂動と終端cell分類filterへ}
+\author{研究ミーティング資料}
+\date{2026年8月17日}
+
+\begin{document}
+
+% 1 --------------------------------------------------------------------------
+\begin{frame}[plain]
+  \begin{tikzpicture}[remember picture,overlay]
+    \fill[Paper] (current page.south west) rectangle (current page.north east);
+    \fill[Blue] (current page.north west) rectangle ([xshift=.22cm]current page.south west);
+    \draw[Teal,line width=2pt] ([xshift=.85cm,yshift=-1.08cm]current page.north west)
+      -- ([xshift=4.1cm,yshift=-1.08cm]current page.north west);
+  \end{tikzpicture}
+  \vspace{0.65cm}
+  {\usebeamerfont{title}\color{Ink}\inserttitle\par}
+  \vspace{0.24cm}
+  {\usebeamerfont{subtitle}\color{Muted}\insertsubtitle\par}
+  \vspace{0.9cm}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.62\textwidth}
+      {\fontsize{16}{20}\selectfont\bfseries
+      最大の改善は、予測器ではなく\textcolor{Teal}{行動空間}から得られた。\par}
+      \vspace{0.28cm}
+      {\fontsize{11.3}{14}\selectfont
+      小摂動を同方向へ可変回数 $K$ だけ持続させると、
+      canonical 6 cell到達は \textbf{0/3 seedから3/3 seed}へ改善した。
+      一方、GP／分類器によるオンライン選択圧は、教師が間に合わず再現性のある追加効果を示していない。}
+    \end{column}
+    \begin{column}{.32\textwidth}
+      \vspace{0.06cm}
+      \begin{tikzpicture}[x=1cm,y=1cm]
+        \draw[->,line width=1.2pt,Muted] (0,0) -- (4.1,0);
+        \foreach \x/\lab/\col in {0.2/{GP}/Blue,1.35/{transport}/Orange,2.55/{variable $K$}/Teal,3.82/{classifier}/Purple}{
+          \fill[\col] (\x,0) circle (3.5pt);
+          \node[align=center,font=\fontsize{7}{8}\selectfont,text=\col,above=5pt] at (\x,0) {\lab};
+        }
+        \node[align=center,text=Ink,font=\fontsize{11}{13}\selectfont\bfseries] at (2.1,-.75)
+          {予測を精密にする前に\\探索可能な経路族を作る};
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+  \vfill
+  {\color{Muted}\fontsize{8.5}{10}\selectfont\insertauthor\hfill\insertdate}
+\end{frame}
+
+% 2 --------------------------------------------------------------------------
+\begin{frame}{探索を変えたのは、予測モデルより行動表現だった}
+  \smalltag[Muted]{OVERVIEW}\hspace{0.08cm}
+  \smalltag[Blue]{同条件内だけ比較}\hspace{0.08cm}
+  \smalltag[Teal]{mechanics step基準}
+  \vspace{0.18cm}
+
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \draw[-{Latex[length=3mm]},line width=1.2pt,Line] (.35,0) -- (14.95,0);
+    \foreach \x/\yr/\name/\hyp/\col in {
+      1.0/2026.08.14/{main5}/{連続GP}/Blue,
+      3.75/2026.08.15/{reach}/{持続摂動}/Orange,
+      6.55/2026.08.15/{main6--7}/{K=2学習}/Purple,
+      9.45/2026.08.16/{main8}/{可変$K$}/Teal,
+      12.55/2026.08.17/{main9}/{cell分類}/Red}{
+      \fill[\col] (\x,0) circle (4.2pt);
+      \node[above=4pt,align=center,text=Ink,font=\fontsize{8.2}{9.4}\selectfont\bfseries] at (\x,0) {\name};
+      \node[below=5pt,align=center,text=\col,font=\fontsize{7.5}{8.5}\selectfont] at (\x,0) {\hyp};
+      \node[above=24pt,align=center,text=Muted,font=\fontsize{6.4}{7.3}\selectfont] at (\x,0) {\yr};
+    }
+    \node[align=left,text=Ink,font=\fontsize{8}{10}\selectfont] at (2.0,-1.15)
+      {終端descriptorを\\滑らかに回帰};
+    \node[align=left,text=Ink,font=\fontsize{8}{10}\selectfont] at (5.15,-1.15)
+      {「どこで・どう長く」\\摂動するかへ};
+    \node[align=left,text=Ink,font=\fontsize{8}{10}\selectfont] at (8.2,-1.15)
+      {角度／macro全体を\\GPで順位付け};
+    \node[align=left,text=Ink,font=\fontsize{8}{10}\selectfont] at (11.15,-1.15)
+      {方向持続を固定し\\回数$K$を探索};
+    \node[align=left,text=Ink,font=\fontsize{8}{10}\selectfont] at (14.0,-1.15)
+      {未知を当てず\\既知重複を棄却};
+  \end{tikzpicture}
+
+  \vspace{0.18cm}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.48\textwidth}
+      \textbf{評価の主軸}
+      \begin{itemize}\setlength\itemsep{0.06cm}
+        \item canonical 6 cellの到達率・$T_6$
+        \item 発見曲線のAUC（同一世代内のみ）
+        \item 学習器はrandomだけでなく\textbf{score-shuffled}とも比較
+      \end{itemize}
+    \end{column}
+    \begin{column}{.48\textwidth}
+      \textbf{混同しない4つの区別}
+      \begin{itemize}\setlength\itemsep{0.06cm}
+        \item raw cell / canonical 6
+        \item kinematic到達 / collision-free feasible到達
+        \item offline固定panel / online動的archive
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \sourcefoot{結果文書・CSV/JSON；異世代の絶対AUCは直接比較しない。}
+\end{frame}
+
+% 3 --------------------------------------------------------------------------
+\begin{frame}{main5：連続GPはcell数を増やさなかった}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.55\textwidth}
+      \safeinclude[width=\linewidth]{\figpath fig_main5.pdf}
+    \end{column}
+    \begin{column}{.41\textwidth}
+      \smalltag{HELD-OUT}\quad\smalltag[Muted]{$n=5$ seeds}
+      \vspace{0.14cm}
+      \textbf{設計：}$(q,v)$からflat確率・終端descriptorを回帰し、archive距離＋分散で順位付け。
+      \vspace{0.04cm}
+      \textbf{同条件比較：$B=1200$, $\lVert v\rVert=0.20$}
+      \begin{itemize}\setlength\itemsep{0.08cm}
+        \item random / GP-UCBとも最終\textbf{2.0 cell}
+        \item AUC：1.634 / 1.657、paired差 $+0.023$
+        \item 95\%区間 $[-0.075,\,0.121]$：符号不確定
+        \item posterior版は1.8 cell、wall timeは約7.7倍
+      \end{itemize}
+      \vspace{0.06cm}
+      \claim{判断：獲得関数以前に、探索できる終端の種類が狭い。}
+    \end{column}
+  \end{columns}
+  \sourcefoot{MAIN5\_RESULTS；held-out seeds 100--104。}
+\end{frame}
+
+% 4 --------------------------------------------------------------------------
+\begin{frame}{GPは学習前に使われ、学習後もcell尺度には粗かった}
+  \smalltag[Orange]{DIAGNOSTIC}\quad\smalltag[Muted]{random corpus}
+  \vspace{0.10cm}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.55\textwidth}
+      \begin{table}
+        \centering
+        \renewcommand{\arraystretch}{1.25}
+        {\fontsize{8.2}{9.7}\selectfont
+        \begin{tabular}{r r r r}
+          \toprule
+          $n$ & flat AUC & novelty AUC & W-error \\
+          \midrule
+          4  & .588 & .580 & --- \\
+          32 & .848 & .865 & $4.95\,r_{cell}$ \\
+          80 & .877 & .921 & $3.60\,r_{cell}$ \\
+          \bottomrule
+        \end{tabular}}
+      \end{table}
+      \vspace{0.12cm}
+      \begin{tikzpicture}[x=1cm,y=.86cm]
+        \draw[->,Muted] (0,0) -- (6.55,0) node[right,font=\scriptsize]{step};
+        \draw[very thick,Blue] (.25,.15) -- (1.35,.15);
+        \node[above,font=\fontsize{7.4}{8.5}\selectfont,text=Blue] at (.8,.15) {trunk+cold};
+        \fill[Orange] (1.35,.15) circle (3.2pt);
+        \node[above=7pt,align=center,font=\fontsize{7.4}{8.5}\selectfont,text=Orange] at (1.35,.15) {最初のGP選択\\4 perturbation例};
+        \draw[very thick,Teal] (1.35,.15) -- (6.8,.15);
+        \node[above,font=\fontsize{7.4}{8.5}\selectfont,text=Teal] at (4.1,.15) {guided探索};
+      \end{tikzpicture}
+    \end{column}
+    \begin{column}{.41\textwidth}
+      \textbf{edge数が教師量を過大表示}
+      \begin{itemize}\setlength\itemsep{0.05cm}
+        \item 最初のfitは139--263 edgeでも独立摂動は4本
+        \item 最終でも独立outcomeは31--38本
+        \item edgeの97\%は決定論suffix
+      \end{itemize}
+      \vspace{0.00cm}
+      \textbf{読み方}
+      \begin{itemize}\setlength\itemsep{0.05cm}
+        \item flatの粗い順位は$n\approx24$以降に学べる
+        \item しかし終端をcell半径以内に回帰できない
+        \item novelty AUCは実cellでなく連続距離proxy
+      \end{itemize}
+      \claim{判断：まず行動空間を広げる。}
+    \end{column}
+  \end{columns}
+  \sourcefoot{GP\_LEARNING\_CURVE\_RESULTS；random corpus。}
+\end{frame}
+
+% 5 --------------------------------------------------------------------------
+\begin{frame}{小摂動で6 cellへ届くが、単純randomでは稀だった}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.58\textwidth}
+      \safeinclude[width=\linewidth]{\figpath fig_reachability.pdf}
+    \end{column}
+    \begin{column}{.38\textwidth}
+      \smalltag[Orange]{REACHABILITY}\quad\smalltag[Muted]{診断実験}
+      \vspace{0.12cm}
+      \textbf{到達可能性の切り分け}
+      \begin{itemize}\setlength\itemsep{0.08cm}
+        \item 保存witnessのunionは、$\lVert v\rVert=0.20$・現collisionでcanonical 6を網羅
+        \item 全検証edgeはcollision-free、実変位norm $<0.20$
+        \item rootへ大摂動0.30：5/5 seedで6 cell、中央値$T_6=1504$
+      \end{itemize}
+      \vspace{0.05cm}
+      \textbf{しかし現行random}
+      \begin{itemize}\setlength\itemsep{0.08cm}
+        \item 10k-step・6 seed：2--3 cell
+        \item seed302を30kまで延長しても3 cell
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \sourcefoot{reachability reports；各診断条件は異なる。}
+\end{frame}
+
+% 6 --------------------------------------------------------------------------
+\begin{frame}{有効だったのは、途中状態からの長い摂動鎖だった}
+  \smalltag[Orange]{MECHANISM}\quad\smalltag[Muted]{seeds 400--402}
+  \vspace{0.12cm}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.55\textwidth}
+      \begin{tikzpicture}[x=.92cm,y=.92cm]
+        \draw[line width=1.2pt,Muted] (0,0) -- (1,0) -- (2,0) -- (3,0) -- (4,0);
+        \foreach \x in {0,...,4}{\fill[Muted] (\x,0) circle (2.7pt);}
+        \node[below,font=\fontsize{7}{8}\selectfont,text=Muted] at (2,0) {deterministic trunk};
+        \draw[-{Latex},line width=1.5pt,Orange] (3,0) -- ++(.65,.55);
+        \fill[Orange] (3.65,.55) circle (3pt);
+        \draw[-{Latex},line width=1.5pt,Teal] (3.65,.55) -- ++(.58,.50);
+        \fill[Teal] (4.23,1.05) circle (3pt);
+        \draw[-{Latex},line width=1.5pt,Teal] (4.23,1.05) -- ++(.56,.48);
+        \fill[Teal] (4.79,1.53) circle (3pt);
+        \draw[-{Latex},line width=1.5pt,Teal] (4.79,1.53) -- ++(.55,.44);
+        \node[right,align=left,font=\fontsize{7.2}{8.4}\selectfont,text=Teal] at (5.34,1.97)
+          {直前の物理方向を\\新しい接空間へtransport};
+        \draw[-{Latex},line width=1.4pt,Purple,dashed] (4.23,1.05) -- ++(.75,-.06);
+        \node[right,font=\fontsize{7}{8}\selectfont,text=Purple] at (4.98,.99) {$20\%$ random turn};
+        \node[above left,font=\fontsize{7}{8}\selectfont,text=Orange] at (3.65,.55) {seed};
+      \end{tikzpicture}
+      \vspace{0.04cm}
+      \begin{table}
+        \centering\renewcommand{\arraystretch}{1.18}
+        \begin{tabular}{l c c}
+          \toprule
+          方策 & canonical & raw \\
+          \midrule
+          random transport-pool & 2,2,2 & 2,2,2 \\
+          GP + soft alignment & 5,4,4 & 5,6,4 \\
+          \textbf{80/20 heuristic} & \textbf{6,6,6} & \textbf{6,7,6} \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
+    \end{column}
+    \begin{column}{.41\textwidth}
+      \textbf{seed401の経路監査}
+      \begin{itemize}\setlength\itemsep{0.08cm}
+        \item exact root選択は1回だけ：collision、新規cellなし
+        \item 追加6 cellはtrunk途中stateから開始
+        \item 発見鎖長は概ね3, 4, 7, 11, 16, 21 perturbations
+        \item cell[3]代表は18連続摂動：15 transport＋3 random turn
+      \end{itemize}
+      \vspace{0.00cm}
+      \textbf{因果の範囲}
+      \begin{itemize}\setlength\itemsep{0.02cm}
+        \item direct-child＋transportの\textbf{複合prior}
+        \item 方向持続の単独効果は未分離
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% 7 --------------------------------------------------------------------------
+\begin{frame}{$K=2$：同方向は常に最良ではなかった}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.54\textwidth}
+      \safeinclude[width=\linewidth]{\figpath fig_angle_offline.pdf}
+    \end{column}
+    \begin{column}{.42\textwidth}
+      \smalltag[Orange]{OFFLINE PILOT}\quad\smalltag[Muted]{54 groups}
+      \vspace{0.12cm}
+      \textbf{固定した比較}
+      \begin{itemize}\setlength\itemsep{0.03cm}
+        \item 同じ$q_1$から16角度をすべてbranch rollout
+        \item q1 group単位CV、frozen 1-cell archive
+      \end{itemize}
+      \vspace{0.00cm}
+      \begin{table}
+        \centering\renewcommand{\arraystretch}{1.15}
+        \begin{tabular}{l c}
+          \toprule
+          第2摂動の選び方 & 新規cell top-1 \\
+          \midrule
+          uniform期待 & .126 \\
+          fixed同方向 $\theta=0$ & .074 \\
+          fixed反対 $\theta=\pi$ & .204 \\
+          angle-aware GP & \textbf{.222} \\
+          score-shuffled & .148 \\
+          oracle & .370 \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
+      \vspace{0.05cm}
+    \end{column}
+  \end{columns}
+  \sourcefoot{macro2 angle panel；seeds 623--625、864 branches。}
+\end{frame}
+
+% 8 --------------------------------------------------------------------------
+\begin{frame}{main6：角度GPのoffline信号はonlineで消えた}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.55\textwidth}
+      \safeinclude[width=\linewidth,trim=0 0 0 0,clip]{\figpath fig_main6_main7.pdf}
+    \end{column}
+    \begin{column}{.41\textwidth}
+      \smalltag[Orange]{ONLINE PILOT}\quad\smalltag[Muted]{$n=3$, $B=10000$}
+      \vspace{0.04cm}
+      \textbf{main6：親と第1摂動はrandom、第2角度だけ選択}
+      \vspace{0.00cm}
+      \begin{table}
+        \centering\renewcommand{\arraystretch}{1.12}
+        \begin{tabular}{l c c}
+          \toprule
+          方策 & cells & AUC \\
+          \midrule
+          independent random & \textbf{3.33} & \textbf{2.83} \\
+          fixed transport 80/20 & 2.33 & 2.23 \\
+          learned-angle GP & 2.00 & 1.97 \\
+          score-shuffled & 2.33 & 2.01 \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
+      \vspace{0.06cm}
+      \textbf{なぜ崩れたか}
+      \begin{itemize}\setlength\itemsep{0.02cm}
+        \item 有望な$q_1$が少なく、角度だけでは上限が低い
+        \item 同一$q_1$内score差が小さく、paired warmupのGP--shuffle差もほぼ0
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \sourcefoot{MAIN6\_ONLINE\_AGGREGATE；seeds 600--602。}
+\end{frame}
+
+% 9 --------------------------------------------------------------------------
+\begin{frame}{main7：joint GPの効果はseed依存で未確定だった}
+  \smalltag[Orange]{ONLINE PILOT}\quad\smalltag[Muted]{$n=3$, $B=10000$}
+  \vspace{0.14cm}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.55\textwidth}
+      \begin{table}
+        \centering\renewcommand{\arraystretch}{1.26}
+        \begin{tabular}{l c c c}
+          \toprule
+          方策 & cells & AUC & $T_6$ \\
+          \midrule
+          independent random & 1.67 & 1.592 & 未達 \\
+          fixed transport & 2.00 & 1.805 & 未達 \\
+          joint macro GP & \textbf{2.67} & \textbf{2.303} & 未達 \\
+          score-shuffled GP & 2.33 & 2.207 & 未達 \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
+      \vspace{0.16cm}
+      \centering\textcolor{Blue}{joint GP $-$ shuffledのcell差：$(0,-1,+2)$}\par
+      \textcolor{Muted}{平均改善はseed602に依存}
+    \end{column}
+    \begin{column}{.41\textwidth}
+      \textbf{joint化の狙い}
+      \begin{itemize}\setlength\itemsep{0.04cm}
+        \item $(q,v_1,\theta)$を共通poolから一括順位付け
+        \item 角度だけでなく、有望な開始位置も学ぶ
+      \end{itemize}
+      \vspace{0.06cm}
+      \textbf{しかし}
+      \begin{itemize}\setlength\itemsep{0.04cm}
+        \item seed601ではshuffledが優位
+        \item 3 seedで6 cellへ届かず、因果効果を確定できない
+        \item cost-aware版は安いcollisionを好み多様性が悪化
+      \end{itemize}
+      \claim{判断：2 stepに固定せず、必要な持続距離そのものをactionにする。}
+    \end{column}
+  \end{columns}
+  \sourcefoot{MAIN7\_B10000\_RESULTS；seeds 600--602。}
+\end{frame}
+
+% 10 -------------------------------------------------------------------------
+\begin{frame}{main8：可変長持続macroが6 cell探索を変えた}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.59\textwidth}
+      \safeinclude[width=\linewidth]{\figpath fig_main8_ablation.pdf}
+    \end{column}
+    \begin{column}{.37\textwidth}
+      \smalltag[Teal]{PAIRED ABLATION}\quad\smalltag[Muted]{$n=3$}
+      \vspace{0.04cm}
+      \textbf{actionの再定義}
+      \[
+        \begin{aligned}
+          a&=(q_0,v_1,K),\\[-2pt]
+          K&=1,\ldots,24
+        \end{aligned}
+      \]
+      各stepで前の物理変位を新しい接空間へ射影し、norm 0.20へ再正規化する。
+      \vspace{0.04cm}
+      \begin{table}
+        \centering\renewcommand{\arraystretch}{1.10}
+        {\fontsize{7.8}{9.1}\selectfont
+        \begin{tabular}{l c c}
+          \toprule
+          action & mean $C$ & reach 6 \\
+          \midrule
+          $K=1$固定 & 1.67 & 0/3 \\
+          $K=1{:}24$ random & \textbf{6.00} & \textbf{3/3} \\
+          \bottomrule
+        \end{tabular}}
+      \end{table}
+      canonical $T_6=1597,1517,1686$ step。
+      \vspace{0.00cm}
+    \end{column}
+  \end{columns}
+  \sourcefoot{MAIN8\_FINAL\_RESULTS；seeds 700--702、$B=3000$。}
+\end{frame}
+
+% 11 -------------------------------------------------------------------------
+\begin{frame}{offlineでは状態依存の$K$選択を学べた}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.58\textwidth}
+      \safeinclude[width=\linewidth]{\figpath fig_main8_offline_online.pdf}
+    \end{column}
+    \begin{column}{.38\textwidth}
+      \smalltag[Orange]{OFFLINE PANEL}\quad\smalltag[Muted]{18 groups}
+      \vspace{0.12cm}
+      \textbf{全$K=1{:}24$をcounterfactual評価}
+      \begin{itemize}\setlength\itemsep{0.04cm}
+        \item terminal cellが$K$で変化：12/18 group
+        \item flat/collision/cellが変化：16/18 group
+      \end{itemize}
+      \vspace{0.05cm}
+      \begin{table}
+        \centering\renewcommand{\arraystretch}{1.08}
+        \begin{tabular}{l c}
+          \toprule
+          $K$選択 & 新規cell top-1 \\
+          \midrule
+          uniform期待 & .338 \\
+          basis-free GP & \textbf{.667} \\
+          score-shuffled & .389 \\
+          oracle & .833 \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
+    \end{column}
+  \end{columns}
+  \sourcefoot{PERSISTENT\_K\_PANEL；18 groups、432 branches。}
+\end{frame}
+
+% 12 -------------------------------------------------------------------------
+\begin{frame}{held-outではGP filterはshuffledを上回らなかった}
+  \smalltag{HELD-OUT}\quad\smalltag[Muted]{$n=10$, $B=3000$}\quad\smalltag[Purple]{SHUFFLED CONTROL}
+  \vspace{0.14cm}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.51\textwidth}
+      \textbf{Global top-quantile filter}
+      \begin{table}
+        \centering\renewcommand{\arraystretch}{1.18}
+        \begin{tabular}{l c c c}
+          \toprule
+          方策 & 6到達 & can. AUC & cap $T_6$ \\
+          \midrule
+          random & 10/10 & 4.408 & 1899 \\
+          GP filter & 10/10 & 4.668 & 1575 \\
+          shuffled & 10/10 & \textbf{4.727} & \textbf{1322} \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
+      \vspace{0.20cm}
+      GP--randomは改善傾向だが、GP--shuffledはAUC $-0.059$。
+      候補削減と学習scoreを分けると、後者は支持されない。
+    \end{column}
+    \begin{column}{.45\textwidth}
+      \textbf{同じ$(q,v)$内だけで$K$を順位付け}
+      \begin{table}
+        \centering\renewcommand{\arraystretch}{1.18}
+        \begin{tabular}{l c c}
+          \toprule
+          方策 & 6到達 & canonical AUC \\
+          \midrule
+          random & \textbf{10/10} & 4.408 \\
+          group GP & 6/10 & 4.323 \\
+          group shuffled & 7/10 & \textbf{4.577} \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
+      \vspace{0.20cm}
+      offlineの$K$信号は、policy分岐・少数教師・basin境界の下では利用できなかった。
+      \vspace{0.15cm}
+      \claim{採用：GPなしvariable-$K$ random。}
+    \end{column}
+  \end{columns}
+  \sourcefoot{MAIN8 held-out；seeds 703--712。}
+\end{frame}
+
+% 13 -------------------------------------------------------------------------
+\begin{frame}{main9：終端予測を連続回帰からcell分類へ変えた}
+  \smalltag[Red]{MODEL PIVOT}\quad\smalltag[Teal]{COLLISION CONTINUATION}
+  \vspace{0.15cm}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.48\textwidth}
+      \textbf{以前：連続GP}
+      \[
+        (q,v,K)\longmapsto \mathcal{N}(\mu_D,\Sigma_D)
+      \]
+      \begin{itemize}\setlength\itemsep{0.04cm}
+        \item basin境界でdescriptorが不連続
+        \item 平均がどのcellにも属さないことがある
+        \item 大分散UCBが既知basinをfalse novelty化
+      \end{itemize}
+      \vspace{0.14cm}
+      \begin{tikzpicture}
+        \draw[-{Latex},line width=1.4pt,Muted] (0,0) -- (5.2,0);
+        \node[above,font=\fontsize{7.5}{8.5}\selectfont,text=Muted] at (2.6,0) {出力の構造に合わせてモデルを変更};
+      \end{tikzpicture}
+    \end{column}
+    \begin{column}{.48\textwidth}
+      \textbf{現在：閉集合分類器を保守filterに限定}
+      \[
+        (q,\mathrm{context},v,K)\longmapsto p(C=c)
+      \]
+      \begin{itemize}\setlength\itemsep{0.04cm}
+        \item Random Forest / ExtraTrees / group-kNN
+        \item 未知cellを直接予測せず、\textbf{高確信の既知重複だけ}棄却
+        \item novelty・elite置換価値はcurrent archiveと外部比較
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vspace{0.17cm}
+  \begin{tikzpicture}[x=1cm,y=.75cm]
+    \node[draw=Line,fill=PaleOrange,rounded corners=2pt,minimum width=3.1cm,minimum height=.75cm] (roll) at (1.8,0) {collisionでもrollout継続};
+    \node[draw=Line,fill=PaleBlue,rounded corners=2pt,minimum width=3.25cm,minimum height=.75cm] (kin) at (6.0,0) {kinematic archive};
+    \node[draw=Line,fill=PaleTeal,rounded corners=2pt,minimum width=3.25cm,minimum height=.75cm] (fea) at (10.3,0) {collision-free archive};
+    \draw[-{Latex},thick,Muted] (roll)--(kin);
+    \draw[-{Latex},thick,Muted] (kin)--(fea);
+    \node[below=4pt,font=\fontsize{7}{8}\selectfont,text=Muted] at (6.0,-.35) {cell coverage};
+    \node[below=4pt,font=\fontsize{7}{8}\selectfont,text=Muted] at (10.3,-.35) {feasible elite quality};
+  \end{tikzpicture}
+  \sourcefoot{main9、forest\_cell\_model、collision\_continue。}
+\end{frame}
+
+% 14 -------------------------------------------------------------------------
+\begin{frame}{安全に分類できる頃には6 cell探索が終わっていた}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.52\textwidth}
+      \safeinclude[width=\linewidth]{\figpath fig_main9_timing.pdf}
+      \vspace{0.05cm}
+      \begin{itemize}\setlength\itemsep{0.02cm}
+        \item corpus $T_6=548/770/1121$ step
+        \item その時点の独立教師：11/14/17 macro
+        \item prevalenceを安定超過：約32 macro（中央値1669 step）
+        \item strict kNN初棄却：96 macro（約4918 step）
+      \end{itemize}
+    \end{column}
+    \begin{column}{.44\textwidth}
+      \safeinclude[width=\linewidth]{\figpath fig_main9_snapshot.pdf}
+      \vspace{0.05cm}
+      \textbf{2/3/4-cell frozen snapshot}
+      \begin{itemize}\setlength\itemsep{0.02cm}
+        \item 独立教師平均：1.0 / 3.7 / 5.0 macro
+        \item strict filter：全モデル・全snapshotで棄却0
+        \item S4 kNN top-10診断：precision .750、unknown retention .929
+        \item novelty lift 1.025、valuable retention .908：random同等
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \sourcefoot{MAIN9\_MODEL\_ANALYSIS；snapshot seeds 930--932。}
+\end{frame}
+
+% 15 -------------------------------------------------------------------------
+\begin{frame}{採用案：variable-$K$ random、分類器はshadow運用}
+  \smalltag[Teal]{DECISION}\quad\smalltag[Muted]{five-bar scope}
+  \vspace{0.00cm}
+  \begin{columns}[T,totalwidth=\textwidth]
+    \begin{column}{.57\textwidth}
+      \begin{table}
+        \centering\renewcommand{\arraystretch}{1.12}
+        \begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}X c >{\RaggedRight\arraybackslash}p{4.0cm}}
+          \toprule
+          検討要素 & 判定 & 根拠 \\
+          \midrule
+          連続descriptor GP & \no & 2 cell停滞、cell尺度誤差大 \\
+          direct-child＋transport & \yes & canonical 6を3/3 seed \\
+          K=2 learned angle & \no & onlineでrandom/shuffle以下 \\
+          joint K=2 GP & \maybe & 3 seed・shuffle差不確定 \\
+          variable-$K$ persistent & \yes & paired ablation 0/3 $\to$ 3/3 \\
+          RF/ET/kNN filter & \maybe & 長時間は学習、$T_6$前は教師不足 \\
+          \bottomrule
+        \end{tabularx}
+      \end{table}
+    \end{column}
+    \begin{column}{.39\textwidth}
+      \textbf{現在の探索アルゴリズム}
+      \begin{enumerate}\setlength\itemsep{0.00cm}
+        \item $(q,v,K)$をrandom選択
+        \item direction transportを$K$回
+        \item collisionを記録しflatまでrollout
+        \item kinematic / feasible archiveを別更新
+      \end{enumerate}
+      \vspace{0.00cm}
+      \textbf{学習器を有効化する条件}
+      \begin{itemize}\setlength\itemsep{0.00cm}
+        \item prequentialで既知重複precisionを確認
+        \item pseudo-unknown保持 $\ge 95\%$
+        \item score-shuffledを上回るまでshadow
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\end{document}

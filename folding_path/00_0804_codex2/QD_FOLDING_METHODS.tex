@@ -1,0 +1,910 @@
+% !TeX program = lualatex
+% !TeX encoding = UTF-8
+\RequirePackage{fix-cm}
+\RequirePackage{array}
+\documentclass[a4paper,11pt]{ltjsarticle}
+
+\usepackage[margin=24mm]{geometry}
+\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{booktabs,longtable,tabularx,array,float}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage[numbers,sort&compress]{natbib}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  citecolor=green!35!black,
+  urlcolor=blue!65!black,
+  pdftitle={非定常な発見報酬を考慮した多自由度折り構造の平坦経路探索},
+  pdfauthor={Kotaro Matsuo}
+}
+\urlstyle{same}
+
+\setlength{\parindent}{1\zw}
+\setlength{\parskip}{0.25\baselineskip}
+\setlist{nosep,leftmargin=2\zw}
+\setlength{\LTpre}{0.4\baselineskip}
+\setlength{\LTpost}{0.8\baselineskip}
+\setlength{\emergencystretch}{2\zw}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcommand{\code}[1]{\nolinkurl{#1}}
+\newcommand{\ind}{\mathbb{I}}
+\newcommand{\history}{\mathcal H}
+\newcommand{\frontier}{\mathcal F}
+\newcommand{\events}{\mathcal E}
+\newcommand{\outarchive}{\mathcal A}
+
+\title{非定常な発見報酬を考慮した\\
+多自由度折り構造の平坦経路探索\\
+---候補状態集合と摂動位置選択器の二段階比較---}
+\author{研究方法・実装・予備実験整理稿}
+\date{2026年8月13日}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+本稿は，多自由度の折り構造について，目的となる平坦形状を事前に一つ指定せず，
+有限の数値計算予算内で，多様な平坦終端状態と各終端への代表経路を発見する探索問題を扱う．
+一回の摂動後には重力ポテンシャル型の量を逐次最小化する決定論的rolloutを行い，
+平坦化または衝突を終端とする．平坦終端は最終形状と重なり順でcell分けし，
+各cellには初期状態からのstep数が最小の経路を保存する．
+
+探索の中心課題は，既往経路のどの状態へ摂動を与えるかである．
+新規cell発見報酬は終端archiveの成長に依存し，同じ状態の期待報酬も時間とともに変化する．
+また，摂動可能状態を部分集合へ圧縮すると，最も有望な状態が集合外に落ちる候補集合損失も生じる．
+そこで，まず摂動位置を一様ランダムに固定し，root再始動baselineと，同数のfrontier，event，history候補集合を比較する．
+次に，第一段階で選んだ集合を固定し，random，通常UCB，archive contextを用いるSM-UCBを
+第一段階と重ならないseedで比較する．
+
+five-bar linkage，総800 mechanics-step，第一・第二段階各5 seedの予備実験では，
+通常条件と同じ摂動半径0.22のroot再始動は全seedで既知の4形状を発見した一方，
+bootstrap半径0.08のroot再始動は2形状に留まった．三つの途中状態集合内では，
+frontierとhistoryの最終新規cell数が同率であったが，発見曲線AUCによりfrontierを採用した．
+第二段階では三選択器の最終cell数は全seedで同一であり，new-cell AUCのみ
+SM-UCB，通常UCB，randomの順にわずかに大きかった．
+したがって本実験は，SM-UCBが最終coverageを増加させたことではなく，
+固定予算内で発見時期を少し早めた可能性を示す予備結果として位置づける．
+\end{abstract}
+
+\tableofcontents
+
+\section{研究目的と主張範囲}
+\label{sec:objective}
+
+\subsection{対象とする探索問題}
+
+対象は，複数の微小変形メカニズムをもつ折り構造である．
+到達すべき平坦形状を入力として与えるのではなく，実際に到達した終端を事後的に分類し，
+異なる平坦形状または異なる重なり順をもつ終端結果を収集する．
+研究目的は次の二つである．
+\begin{enumerate}
+  \item 有限の総数値計算step内で，異なる終端cellをできるだけ多く発見する．
+  \item 各cellについて，初期状態からのstep数が短い代表経路を保存する．
+\end{enumerate}
+
+本稿は，すべての平坦状態の完全列挙や到達可能性の完全性を主張しない．
+また，同じ最終形状・重なり順へ至る経路同士の幾何学的多様性は主descriptorに含めない．
+主出力は「重なり順を区別した多様な終端結果」と「各結果への代表最短経路」である．
+
+\subsection{二つの予算配分問題}
+
+既往経路中の状態集合を全history \(\history_t\)，実際に選択可能な候補集合を
+\(\mathcal C_t\subseteq\history_t\) とする．状態 \(v\) から一回のランダム摂動と
+決定論的rolloutを行ったときの，現在の終端archiveに対する期待限界利得を
+\(\Delta_t(v)\) と書く．実際に選んだ状態を \(v_t\) とすると，理想状態との差は恒等的に
+\begin{align}
+  \max_{v\in\history_t}\Delta_t(v)-\Delta_t(v_t)
+  ={}&
+  \underbrace{
+  \max_{v\in\history_t}\Delta_t(v)
+  -\max_{v\in\mathcal C_t}\Delta_t(v)
+  }_{\text{候補集合損失}}
+  \notag\\
+  &+
+  \underbrace{
+  \max_{v\in\mathcal C_t}\Delta_t(v)-\Delta_t(v_t)
+  }_{\text{集合内選択損失}} .
+  \label{eq:loss-decomposition}
+\end{align}
+したがって，位置scoreだけを改善しても，有望状態が候補集合外なら発見できない．
+本稿の第一段階は候補集合損失，第二段階は集合内選択損失を主に比較する．
+
+\section{研究背景：年代順の整理}
+\label{sec:background}
+
+\paragraph{1990年代：sampling-based path planning}
+Probabilistic RoadmapとRapidly-exploring Random Treeは，
+高次元configuration spaceを明示的に格子化せず，samplingと局所接続により到達経路を探索する枠組みを与えた
+\citep{kavraki1996prm,lavalle1998rrt}．
+本研究も高次元の折り状態空間を扱うが，一つの指定goalへの経路ではなく，複数の未知終端を収集する点が異なる．
+
+\paragraph{2002--2006年：UCBと木探索}
+UCB1は，固定armの定常な期待報酬を仮定し，経験平均と試行不足への楽観bonusで有限試行を配分する
+\citep{auer2002ucb}．UCTはこの選択を探索木の各節点へ適用し，終端returnを祖先へbackupする
+\citep{kocsis2006uct}．UCBは候補生成法ではなく，既存候補間の配分法である．
+本研究の一試行が「一状態を選択，一回摂動，終端までrollout」で完結する間はflat UCBで表せる．
+一試行中に複数の摂動判断を明示的に連鎖させる場合には，continuous UCTやprogressive wideningが候補になる
+\citep{couetoux2011continuousuct}．
+
+\paragraph{2008--2011年：noveltyと剛体折り数値計算}
+Novelty Searchは目的関数の局所誘導から離れ，behavior descriptor空間で既存個体から遠い振舞いを探索する考えを示した
+\citep{lehman2008novelty,lehman2011novelty}．
+剛体折りについては，拘束多様体上の運動を数値的に扱う枠組みが整備された
+\citep{tachi2009simulation,wu2010rigid}．
+本研究のevent候補や状態descriptorはnovelty/QDの考えと関係するが，novelty自体を終端目的にはしない．
+
+\paragraph{2011--2013年：adaptive submodularityと発見問題}
+Adaptive submodularityは，観測が増えるほど期待限界利得が減少する問題に対し，
+adaptive greedyの近似保証を与える\citep{golovin2011adaptive}．
+Contextual Gaussian Process Banditはactionとcontextの組にkernelを置き，
+現在contextでの報酬をUCBにより推定する\citep{krause2011contextualgp}．
+Good-UCBは「同じinteresting itemを二度見つけても価値がない」発見問題を扱い，
+Good--Turing missing massを用いて未発見確率を推定する\citep{bubeck2013gooducb}．
+OASMは未知の状態確率を学習しながらadaptive submodular maximizationを行う
+\citep{gabillon2013oasm}．これらは，過去平均と現在限界利得を区別する基礎になる．
+
+\paragraph{2015--2018年：Quality-DiversityとSM-UCB}
+MAP-Elitesはdescriptor空間をcellへ分け，各cellに最高品質個体を保存するillumination algorithmである
+\citep{mouret2015mapelites}．その後，Quality-Diversityとして，品質と結果多様性を同時に扱う枠組みが整理された
+\citep{pugh2016qd,cully2018framework}．
+Interactive Submodular Banditは，選択済み集合をcontextに含めた現在限界利得をkernelで学習するSM-UCBを提案した
+\citep{chen2017smucb}．これは本稿の第二段階に最も近い理論枠組みである．
+
+\paragraph{2019--2022年：非定常banditとQDの配分}
+Rotting banditはarmを使用するほど報酬が減少する構造を扱い，expanding windowによるFEWAを示した
+\citep{seznec2019rotting}．CMA-MEはCMA-ESとMAP-Elitesを統合し，連続変数から多様なcellを効率よく生成する
+\citep{fontaine2020cmame}．Go-Exploreは訪問状態を保存し，そこへ戻って再分岐する``return then explore''を示した
+\citep{ecoffet2021goexplore}．Multi-Emitter MAP-Elitesは複数emitterへの配分にbanditを用い
+\citep{cully2021multiemitter}，Monte Carlo ElitesはMAP-Elitesの親選択をUCBで扱った
+\citep{sfikas2021mce}．後二者は実務的にarchive依存報酬へUCBを用いるが，
+定常UCB1の保証をarchive成長下へ移したものではない．
+
+\subsection{本研究の位置づけ}
+
+本研究は，Go-Explore型の「保存状態からの再分岐」，MAP-Elites型の「終端cellごとのelite保存」，
+bandit型の「有限予算配分」を組み合わせる．ただし，本稿では候補集合と選択器を同時に変えず，
+第一段階で候補集合，第二段階で選択器を分離して評価する．また，SM-UCBの理論を参照する一方で，
+動的な状態木全体へ理論保証をそのまま主張しない．
+
+\section{共通問題設定}
+\label{sec:formulation}
+
+\subsection{拘束と微小メカニズム}
+
+状態座標を \(\bm q\in\mathbb R^n\)，幾何学拘束を
+\begin{equation}
+  \bm g(\bm q)=\bm 0,
+  \qquad
+  \bm J(\bm q)=\frac{\partial\bm g}{\partial\bm q}
+\end{equation}
+とする．拘束を一次で満たす微小変形は
+\begin{equation}
+  \bm J(\bm q)\,\delta\bm q=\bm 0
+\end{equation}
+を満たす．SVDから得る正規直交null-space基底を
+\begin{equation}
+  \bm M(\bm q)
+  =[\bm m_1,\ldots,\bm m_{d(\bm q)}],
+  \qquad \bm M^\mathsf T\bm M=\bm I
+\end{equation}
+とする．five-bar実装では5節点の三次元座標をもち，端部固定自由度を除いた拘束Jacobianを用いる．
+
+\subsection{ランダム摂動と決定論的rollout}
+
+メカニズム係数を半径 \(a_{\max}\) の球内から一様に生成し，
+\begin{equation}
+  \bm\alpha\sim\operatorname{Unif}
+  \{\bm a:\|\bm a\|_2\le a_{\max}\},
+  \qquad
+  \bm q^+=\mathcal P_{\mathcal Q}
+  (\bm q+\bm M(\bm q)\bm\alpha)
+  \label{eq:random-perturbation}
+\end{equation}
+とする．\(\mathcal P_{\mathcal Q}\) はpredictor後に部材長拘束を満たすcorrectorである．
+摂動後は，flatnessを表す重力ポテンシャル型量
+\begin{equation}
+  V(\bm q)=\sum_i |z_i|
+\end{equation}
+を局所的に減らすメカニズム配合率をCMA-ESで決め，一stepずつ更新する．
+ここで \(V\) は平坦化のためのheuristicであり，質量をもつ物理的重力ポテンシャルそのものではない．
+
+各rolloutは，平坦化，衝突，進展停止，数値失敗，一経路step上限，総計算予算到達のいずれかで終わる．
+衝突状態はpathに記録するが，有効終端archiveには入れない．
+
+\subsection{終端descriptorと品質}
+
+一経路を \(\tau=(\bm q_0,\ldots,\bm q_L)\) とする．平坦終端のcellは
+\begin{equation}
+  c(\tau)=
+  \bigl(s_{\mathrm{shape}}(\bm q_L),
+        s_{\mathrm{layer}}(\tau)\bigr)
+  \label{eq:terminal-cell}
+\end{equation}
+である．形状signatureは各部材の平坦面内向きを \(+/-/0\) で表す．
+重なり順は，最終平坦状態から遡り，flatnessが所定閾値を初めて超える最後の非平坦状態で判定する．
+形状または重なり順の一方が異なれば別cellとする．
+
+有効終端archive \(\outarchive_t\) は各cellに一経路を保存する．品質は
+\begin{equation}
+  Q(\tau)=-L(\tau)
+\end{equation}
+であり，同一cellでのみ比較する．新規cellは追加し，既存cellでは \(L\) が短い場合だけeliteを置換する．
+途中状態historyや候補集合の保持にこの品質を用いない．
+
+\subsection{計算予算}
+
+予算 \(B\) はbootstrap後に新しく計算したmechanics updateの総数とする．
+保存済みprefixを再利用する操作は0 step，摂動correctorまたは決定論的一stepは1 stepと数える．
+最後のrolloutは残り予算で打ち切り，\(B\) を超えない．
+rolloutごとの費用は異なるため，選択回数ではなく総stepで全条件を停止する．
+
+\section{発見報酬の非定常性}
+\label{sec:nonstationarity}
+
+\subsection{coverage限界利得}
+
+有効な平坦終端cellのcoverageを
+\begin{equation}
+  F(\outarchive)=|\{c:c\in\outarchive\}|
+\end{equation}
+とする．時刻 \(t\) の一回の観測報酬は
+\begin{equation}
+  r_t=
+  F(\outarchive_t\cup\{Z_t\})-F(\outarchive_t)
+  =\ind[c(Z_t)\notin\outarchive_t]
+  \in\{0,1\}.
+  \label{eq:binary-reward}
+\end{equation}
+状態 \(v\) と固定random emitterがcell \(c\) を生成する確率を \(p_v(c)\) とすると，
+現在の期待限界利得は
+\begin{equation}
+  \Delta_t(v)
+  =\sum_{c\notin\outarchive_t}p_v(c).
+  \label{eq:missing-mass}
+\end{equation}
+archiveが削除なしで成長し，\(p_v\) が固定なら，\(\Delta_t(v)\) は非増加である．
+これは任意変動ではなくcoverageのdiminishing returnsであるが，定常ではない．
+
+\subsection{通常UCBのlifetime平均が推定する量}
+
+通常UCBの経験平均
+\begin{equation}
+  \widehat\mu_t^{\mathrm{life}}(v)
+  =\frac{1}{n_t(v)}
+  \sum_{\tau<t:v_\tau=v}r_\tau
+\end{equation}
+は，現在の \(\Delta_t(v)\) ではなく，過去の異なるarchiveに対する限界利得の平均を推定する．
+例えば一状態が \(M\) cellを等確率で生成するなら，\(n\) 回観測後の次回発見確率は
+\begin{equation}
+  \mu(n+1)=\left(1-\frac1M\right)^n,
+\end{equation}
+一方，lifetime成功率の期待値は
+\begin{equation}
+  \mathbb E[\widehat\mu^{\mathrm{life}}(n)]
+  =\frac{M\{1-(1-1/M)^n\}}{n}
+\end{equation}
+である．後期には，過去に発見を生んだが現在は枯れた状態を上方評価し得る．
+
+\subsection{候補集合も内生的に変化する}
+
+非定常性の影響はscoreだけではない．探索によって新しいStateNodeが生成され，
+候補集合への追加・置換が起きる．現在のfrontierが既知終端しか生まなくても，
+history中の過去状態が新規cellを生む可能性がある．逆に全historyを毎回評価すると，
+候補数，cold start，計算量が増える．式\eqref{eq:loss-decomposition}の二項を分ける必要がある．
+
+候補集合の現在価値を
+\begin{equation}
+  \alpha_t(\mathcal C_t)
+  =
+  \frac{\max_{v\in\mathcal C_t}\Delta_t(v)}
+       {\max_{v\in\history_t}\Delta_t(v)}
+  \in[0,1]
+\end{equation}
+と書けば，全historyでは形式上 \(\alpha_t=1\) だが，実際には評価・選択の負担を伴う．
+本研究は，有限予算下でこの圧縮と選択を経験的に比較する．
+
+\section{比較可能な設計因子}
+\label{sec:factors}
+
+\small
+\begin{longtable}{p{19mm}p{29mm}p{46mm}p{46mm}}
+\caption{探索設計因子と主な利点・欠点}\label{tab:factors}\\
+\toprule
+因子 & 選択肢 & 利点 & 欠点・交絡\\
+\midrule
+\endfirsthead
+\toprule
+因子 & 選択肢 & 利点 & 欠点・交絡\\
+\midrule
+\endhead
+候補状態集合 & root singleton & 初期分岐を独立に再samplingでき，基準が明瞭 & 経路途中のstepping stoneを利用せず，一候補なので同数集合比較の外になる\\
+& 全history & 過去のstepping stoneを捨てず，候補集合損失を最小化する & 状態数が予算とともに増え，長い経路が多く票を持つ．bounded sampleでは希少状態を落とす\\
+& rollout frontier & 各枝の最深再始動点を保持し，終端までの追加費用が小さい & 経路内部の分岐点を見落とし，短いrolloutを多数試せるcost biasをもつ\\
+& event frontier & 極値，基底変化，曲率，衝突直前など解釈可能な分岐点を残す & 閾値とevent定義に依存し，event計算費と見落としがある\\
+& descriptor archive & 状態空間を均等に覆い，類似状態を圧縮できる & descriptor aliasingと量子化依存があり，代表置換でarmの意味が変わる\\
+\midrule
+位置選択器 & random & 定常性を仮定せず，最小のbaselineになる & 観測された生産性や状態類似性を利用しない\\
+& lifetime UCB & 実装が簡潔で，Monte Carlo Elites型baselineと対応する & 過去平均が現在限界利得を推定せず，動的armではUCB1保証がない\\
+& window/discount UCB & 最近の報酬変化へ追従できる & window/discount幅を追加調整し，archive contextの内容を直接表さない\\
+& Good-UCB/FEWA & missing massまたは減衰構造に対する理論がある & support非交差やrested rottingなど，本問題では満たさない仮定がある\\
+& SM-UCB & 状態類似性と現在archiveを同時に用い，現在限界利得を推定する & kernel設計と計算費が増え，動的木全体には原保証を直接適用できない\\
+& UCT & 複数摂動の遅延成果を祖先の状態--摂動へbackupできる & 一介入一rolloutでは深さがなく利点が小さい．連続摂動にはprogressive wideningが必要\\
+\midrule
+摂動emitter & 球内一様random & 疎で不連続なcell発見目的を最適化せず，基準が明瞭 & 局所的に有望な係数分布を学習しない\\
+& CMA-ME/CMA-ES & 連続係数でcell追加・改善方向を適応できる & 疎な二値目的，評価費，重み付け，archive更新で目的が変化する\\
+& NN重み/方策 & 状態とarchiveに応じてemitterを共有学習できる & 単一解収束，学習不安定，追加のtraining budgetを生む\\
+& 摂動系列MAP-Elites & 複数摂動の相互作用をgenotypeとして直接探索できる & 系列次元，待機step，初期からの再計算費が大きい\\
+\midrule
+報酬 & 新規cellのみ & coverageの劣モジュラ構造が明瞭で，非定常性を解釈しやすい & elite短縮や有望な非平坦状態を直接評価しない\\
+& 新規cell＋elite更新 & 最終多様性と代表経路品質を同時に促す & 二目的の尺度と重みを導入し，理論・原因分離が難しい\\
+& frontier novelty追加 & sparse rewardを密にできる & 終端発見と一致せず，衝突境界や無益な遠方を選ぶ可能性がある\\
+\midrule
+候補更新時期 & 毎rollout & 新状態を直ちに利用できる & arm集合が常時変化し，比較と理論対応が難しい\\
+& epoch更新 & epoch内で候補数とarmを固定し，選択器を比較しやすい & 新しい有望状態の利用がepoch境界まで遅れる\\
+\bottomrule
+\end{longtable}
+\normalsize
+
+本稿の現行実験は，root再始動controlと候補集合frontier/event/history，選択器random/UCB/SM-UCB，
+emitterをrandom，報酬を新規cellのみ，候補更新をepoch方式に固定する．
+
+\section{現行二段階アルゴリズム}
+\label{sec:protocol}
+
+\subsection{状態記録と共通bootstrap}
+
+初期構造に三通りの不整を与え，それぞれ決定論的rolloutを行う．
+経路の各状態は座標だけでなく，immutableなstate ID，元trajectory，絶対depth，既往摂動回数，
+状態descriptor，event maskをもつ．選択状態から初期状態までのprefixは元trajectoryから復元する．
+派生rolloutを保存するとき，既知prefixを新規状態として再登録せず，新しく計算したsuffixだけを登録する．
+三bootstrapに共通するrootも候補集合から除く．
+
+
+\subsection{root再始動control}
+
+途中状態を摂動する価値を評価するため，三つの共通bootstrap後も，未変形root \(q_0\) だけを
+再始動点とするcontrolを置く．候補集合は
+\begin{equation}
+  \mathcal C^R=\{q_0\}
+\end{equation}
+であり，毎回
+\begin{equation}
+  \bm\alpha_t\sim\operatorname{Unif}
+  \{\bm a:\|\bm a\|_2\le a_R\},
+  \qquad
+  q_t^+=\mathcal P_{\mathcal Q}
+  (q_0+M(q_0)\bm\alpha_t)
+  \label{eq:root-restart}
+\end{equation}
+として終端まで同じ決定論的rolloutを行う．主controlの\code{root\_random}は
+\(a_R=a_{\max}=0.22\) とし，途中状態三条件とemitterを揃える．
+\code{root\_bootstrap\_random}は \(a_R=a_{\mathrm{boot}}=0.08\) とし，
+文字どおり計算予算までbootstrap生成を反復する感度解析である．後者は位置と摂動半径が同時に変わるため，
+位置だけの比較には用いない．二条件は同じnamed random streamから対応する球内標本を作る．
+
+root集合は一状態しかない．rootを複製して候補数を \(K_t\) に合わせても選択分布は変わらず，
+逆に三集合を一候補へ縮小すると本来の集合抽出を評価できない．したがってroot controlは同数候補比較の外に置き，
+共通bootstrap，共通emitter，共通rollout，総mechanics-step予算を揃え，rollout数を併記する．
+また，一候補ではrandom/UCB/SM-UCB比較が無意味なので，第二段階winnerの対象外とする．
+
+\subsection{三つのraw universe}
+
+時刻 \(t\) までに新しく生成された有効・非平坦・再始動可能状態を \(H_t^\star\) とする．
+各完了rollout \(\tau\) の新規suffix中で最も深いeligible状態を境界状態 \(b(\tau)\) とし，
+\begin{equation}
+  F_t^\star=\{b(\tau):\tau\text{ is completed and productive}\}
+\end{equation}
+とする．flatなら最後の非平坦状態，collisionなら衝突直前状態，budget/no-progress終端なら最後の有効状態である．
+
+event universeは
+\begin{equation}
+  E_t^\star
+  =F_t^\star
+  \cup
+  \{v\in H_t^\star:\operatorname{event}(v)=1\}
+\end{equation}
+である．eventは，
+\begin{enumerate}
+  \item 一定depth間隔，
+  \item ポテンシャルの局所極値，
+  \item mechanism projectorの変化，
+  \item state descriptor経路の曲率，
+  \item 衝突直前，
+  \item 最後の非平坦状態，
+  \item rollout境界
+\end{enumerate}
+の和集合とする．複数eventを満たしても一状態一候補で，maskだけを和集合にする．
+random event，archive-relative novelty，severity順位，merge，non-maximum suppressionは用いない．
+したがって
+\begin{equation}
+  F_t^\star\subseteq E_t^\star\subseteq H_t^\star
+  \label{eq:nested-universes}
+\end{equation}
+である．
+
+\subsection{同数bottom-k候補}
+
+各state ID \(v\) に，初回生成時の固定priority
+\begin{equation}
+  u(v)=\operatorname{HashToUniform}(\text{reservoir seed},v)\in(0,1)
+\end{equation}
+を割り当てる．共通公開数を
+\begin{equation}
+  K_t=\min\left\{
+  K_{\max},|F_t^\star|,|E_t^\star|,|H_t^\star|
+  \right\}
+  =\min\{K_{\max},|F_t^\star|\}
+  \label{eq:common-k}
+\end{equation}
+とする．各active候補集合はraw universe内で \(u(v)\) が小さい \(K_t\) 状態である．
+連続一様priorityにより，各active集合は対応raw universeからの一様 \(K_t\)-部分集合であり，
+\begin{equation}
+  |\mathcal C_t^F|=|\mathcal C_t^E|=|\mathcal C_t^H|=K_t
+\end{equation}
+を厳密に満たす．選択済み状態は削除せず，異なるrandom摂動のため再選択できる．
+
+候補集合は \(R_{\mathrm{epoch}}\) rolloutの間固定する．epoch中に生成された状態はraw universeへ記録するが，
+次epoch境界までactive集合へ反映しない．各conditionは独立なend-to-end探索であるため，
+異なるcondition間では生成historyそのものは一致しない．同数であることは候補母集団の同一性を意味しない．
+
+\subsection{第一段階：集合のscreening}
+
+式\eqref{eq:root-restart}の二root controlを同じseedと予算で実行する．その上で三つの途中状態集合について，
+位置選択を
+\begin{equation}
+  v_t\sim\operatorname{Unif}(\mathcal C_t^m),
+  \qquad m\in\{F,E,H\}
+\end{equation}
+に固定する．同じbootstrap生成規則，総step予算，random emitter，終端archiveを用いる．
+root controlは診断baselineとして表と曲線へ含めるが，第二段階へ進む三集合のwinnerには含めない．
+三集合のseed集約後，次の辞書式規則を事前に固定する．
+\begin{enumerate}
+  \item bootstrap後の新規終端cell数の中央値最大，
+  \item 同率ならnew-cell discovery curve AUCの平均最大，
+  \item なお同率なら新規cell数の平均最大，
+  \item 完全同率ならfrontier，event，historyの固定順．
+\end{enumerate}
+
+\subsection{第二段階：random，通常UCB，SM-UCB}
+
+第一段階で選んだ候補集合規則を固定し，第一段階と重ならないseedを使う．
+
+\paragraph{通常UCB}
+state IDごとにlifetime統計 \((n_t(v),w_t(v))\) をもち，
+\begin{equation}
+  U_t^{\mathrm{plain}}(v)
+  =\frac{w_t(v)}{n_t(v)}
+  +c\sqrt{\frac{\log t}{n_t(v)}}
+  \label{eq:plain-ucb}
+\end{equation}
+を最大化する．未選択状態は \(+\infty\) とし，同点はrandomに解く．
+\(w_t\) は式\eqref{eq:binary-reward}の和である．これは非定常性を補正しないbaselineである．
+
+\paragraph{SM-UCB}
+状態featureを
+\begin{equation}
+  \bm x(v)=
+  [\text{configuration descriptor},
+   \text{depth},\text{remaining depth},V,
+   d(v),\text{intervention ratio}]
+\end{equation}
+とする．archive contextは占有終端cell集合 \(\outarchive_t\) そのものとする．
+入力 \(z=(\bm x(v),\outarchive_t)\) に対し，観測済み入力 \(z_1,\ldots,z_{t-1}\)，
+報酬vector \(\bm r\) から
+\begin{align}
+  \mu_{t-1}(z)
+  &={\bm k}_{t-1}(z)^\mathsf T
+  (\bm K_{t-1}+\sigma^2\bm I)^{-1}\bm r,\\
+  s_{t-1}^2(z)
+  &=k(z,z)-{\bm k}_{t-1}(z)^\mathsf T
+  (\bm K_{t-1}+\sigma^2\bm I)^{-1}{\bm k}_{t-1}(z).
+  \label{eq:smucb-posterior}
+\end{align}
+
+状態kernelはdescriptor RMS距離を用いたRBF，archive kernelは占有vectorのcosineとcell数RBFの積である．
+\begin{align}
+  k_s(v,v')
+  &=\exp\left[
+    -\frac{\operatorname{RMS}(\bm x(v)-\bm x(v'))^2}{2\ell_s^2}
+  \right],\\
+  k_A(A,A')
+  &=
+  \frac{1+|A\cap A'|}{\sqrt{(1+|A|)(1+|A'|)}}
+  \exp\left[-\frac{(|A|-|A'|)^2}{2\ell_A^2}\right],\\
+  k(z,z')&=k_s(v,v')\{0.05+0.95k_A(A,A')\}.
+  \label{eq:smucb-kernel}
+\end{align}
+選択規則は
+\begin{equation}
+  v_t=\arg\max_{v\in\mathcal C_t}
+  \left[
+  \mu_{t-1}(v,\outarchive_t)
+  +\sqrt{\beta_t}\,s_{t-1}(v,\outarchive_t)
+  \right].
+  \label{eq:smucb-score}
+\end{equation}
+実装はkernel matrixを毎回再分解せず，観測追加ごとにCholesky因子を逐次更新する．
+
+SM-UCB原論文では，限界利得関数のRKHS normが \(B\) 以下，有界martingale difference noise，
+適切なkernelを仮定し，
+\begin{equation}
+  \beta_t=2B^2+300\gamma_t\log^3(t/\delta),
+  \qquad
+  R_T\le\sqrt{C_1T\beta_T\gamma_T}+2
+\end{equation}
+の高確率regret boundを与える\citep{chen2017smucb}．
+現実装の有限予算scoreにはより小さいGP-UCB型scheduleを用いる．
+また，本問題では，選択itemはsource state，archiveへ入るitemは確率的終端結果であり，
+同じstateを再選択でき，新stateも生成され，rollout費用も変わる．
+したがって，原定理は設計根拠であり，本実装の木探索全体に対する保証ではない．
+
+\subsection{探索loop}
+
+現行手順をまとめる．
+\begin{enumerate}
+  \item 三初期不整からbootstrap経路を生成し，history，終端archive，三raw universeを初期化する．
+  \item epoch境界で式\eqref{eq:common-k}により三active集合を作り，選択対象集合を固定する．
+  \item random，式\eqref{eq:plain-ucb}，または式\eqref{eq:smucb-score}で一状態を選ぶ．
+  \item 保存prefixを復元し，式\eqref{eq:random-perturbation}の摂動を一回与え，終端まで決定論的rolloutする．
+  \item 新suffixだけをhistoryとraw universeへ追加する．平坦なら終端cellを追加またはelite更新する．
+  \item 式\eqref{eq:binary-reward}で選択器を更新する．elite更新は報酬0として別に記録する．
+  \item 総mechanics stepが予算 \(B\) に達するまで繰り返す．
+\end{enumerate}
+root controlでは手順2--3を \(\mathcal C^R=\{q_0\}\) の固定選択で置き換え，
+毎rolloutをroot prefixから開始する．生成経路と終端archiveの更新，報酬，予算の数え方は同じである．
+
+\section{実装と実験条件}
+\label{sec:implementation}
+
+\subsection{モジュール構成}
+
+\begin{table}[H]
+\centering
+\caption{現行実装の主要ファイル}
+\begin{tabularx}{\linewidth}{p{43mm}Y}
+\toprule
+ファイル & 役割\\
+\midrule
+\code{mechanics.py} & Jacobian，SVD，predictor--corrector，衝突判定，決定論的rollout\\
+\code{descriptors.py} & 中間状態descriptor，最終形状signature，重なり順判定\\
+\code{archives.py} & 全trajectory historyとcellごとの代表最短終端経路\\
+\code{candidate_sets.py} & 三raw universe，fixed priority，equal bottom-\(k\) active集合\\
+\code{selectors.py} & random，lifetime UCB，kernel SM-UCB\\
+\code{protocol_search.py} & root再始動controlとcandidate-set \(\times\) selector条件の探索loop\\
+\code{protocol_experiment.py} & 二段階，複数seed，winner選定，集約出力\\
+\code{run_experiments.py} & command-line入口\\
+\bottomrule
+\end{tabularx}
+\end{table}
+詳細な関数・出力構成は同folderの \code{README.md} に記載する．
+
+\subsection{乱数と公平性}
+
+bootstrap，候補priority，位置選択，random emitterはnamed seedから別々の乱数streamを作る．
+候補集合内部で乱数消費が増えても，別conditionの摂動係数streamがずれない．
+二つのroot controlも同じemitter streamから球内標本を作るため，0.08と0.22の半径差をpairedに評価できる．
+各stage内ではconditionごとに同じbootstrap seed規則を使う．第一段階seed
+\(\{11,29,47,71,89\}\) と第二段階seed
+\(\{101,131,151,181,211\}\) は重ならない．
+
+\subsection{固定した主要値}
+
+本結果のためのhyperparameter sweepは行っていない．既存力学値と，実装前に固定した候補・SM-UCB値を用いた．
+\begin{table}[H]
+\centering
+\caption{2026年8月5日の実験設定}
+\begin{tabularx}{\linewidth}{p{52mm}p{28mm}Y}
+\toprule
+設定 & 値 & 意味\\
+\midrule
+\code{bootstrap_count} & 3 & 初期不整数\\
+\code{initial_imperfection} & 0.08 & 共通bootstrapと感度解析rootの球半径\\
+\code{search_step_budget} & 800 & bootstrap後の総mechanics step\\
+\code{max_path_steps} & 40 & 一経路の論理depth上限\\
+\code{perturb_max_norm} & 0.22 & random摂動係数の球半径\\
+\code{candidate_pool_capacity} & 24 & \(K_{\max}\)\\
+\code{candidate_epoch_rollouts} & 8 & active集合固定期間\\
+\code{event_stride} & 4 & 等間隔event\\
+\code{event_potential_prominence} & 0.002 & ポテンシャル極値閾値\\
+\code{event_basis_change_threshold} & 0.08 & mechanism projector変化閾値\\
+\code{event_curvature_threshold} & 0.40 & descriptor曲率閾値 [rad]\\
+\code{ucb_exploration} & 1.0 & 通常UCBの \(c\)\\
+\code{smucb_state_lengthscale} & 0.25 & \(\ell_s\)\\
+\code{smucb_archive_lengthscale} & 4.0 & \(\ell_A\)\\
+\code{smucb_noise_variance} & 0.10 & GP regularization/noise variance\\
+\code{smucb_delta} & 0.10 & confidence schedule parameter\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{評価量}
+
+主評価量は，bootstrap後に増えた終端cell数
+\begin{equation}
+  N_{\mathrm{new}}=|\outarchive_B|-|\outarchive_0|
+\end{equation}
+と，総stepに対するそのstep functionの面積
+\begin{equation}
+  \operatorname{AUC}_{\mathrm{new}}
+  =\frac1B\int_0^B
+  \bigl(|\outarchive_b|-|\outarchive_0|\bigr)\,db
+\end{equation}
+である．AUCが大きいほど，同じ最終cell数でも早く発見している．
+副評価量は，最終総cell数，異なる形状signature数，cell内elite経路長中央値，rollout数，
+終端内訳，wall time，候補集合サイズ不一致数である．
+
+\section{実験結果}
+\label{sec:results}
+
+\subsection{第一段階：rootと途中状態集合}
+
+位置選択をrandomに固定した5 seedの結果を表\ref{tab:stage1-results}に示す．
+平均の後の値はseed間標準偏差である．root 0.22が位置以外を揃えた主control，
+root 0.08がliteral bootstrap反復である．
+
+\begin{table}[H]
+\centering
+\caption{第一段階：root controlと途中状態集合の比較（各5 seed，800 step）}
+\label{tab:stage1-results}
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+条件 & 半径 & 新規cell & 総cell & shape & new-cell AUC & rollout\\
+\midrule
+root & 0.22 & $2.4\pm0.55$ & 4.0 & 4.0 & $2.165\pm0.607$ & 52.2\\
+root bootstrap & 0.08 & $0.4\pm0.55$ & 2.0 & 2.0 & $0.381\pm0.521$ & 51.0\\
+frontier & 0.22 & $1.6\pm0.55$ & 3.2 & 1.6 & $1.399\pm0.399$ & 356.8\\
+event & 0.22 & $1.2\pm0.84$ & 2.8 & 2.0 & $0.698\pm0.576$ & 130.8\\
+history & 0.22 & $1.6\pm1.14$ & 3.2 & 2.0 & $0.900\pm0.812$ & 136.0\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+root 0.22は全5 seedで，既往のevery-step-opt結果と同じ四形状cell
+\begin{equation}
+\begin{split}
+ &(\texttt{+++-},\texttt{none}),\quad
+ (\texttt{++-+},\texttt{3>1}),\\
+ &(\texttt{+-++},\texttt{0>2}),\quad
+ (\texttt{-+++},\texttt{none})
+\end{split}
+\label{eq:four-known-cells}
+\end{equation}
+を発見した．最後の未発見形状へ到達したsearch stepはseed順に
+\([76,76,75,237,59]\) であり，いずれも予算800より早い．
+一方，対応する乱数streamを半径0.08へ縮小したroot bootstrapは，
+全seedで \code{(++-+, 3>1)} と
+\code{(+-++, 0>2)} の二形状だけであった．
+したがって，five-barでは摂動位置に加えて摂動半径が到達basinを支配している．
+
+位置以外を揃えたroot 0.22と三集合の比較では，rootが全seedで4 shapeを得たのに対し，
+frontierのshape数はseedごとに \([1,1,2,2,2]\) であった．
+途中状態探索で得た4 cellは主に二形状の重なり順反転であり，root探索の4 cellは四つの異なる形状である．
+これは本構造のassembly modeが経路初期に決まり，深い状態への摂動では変更しにくいことを示唆する．
+
+root集合は一状態なので同数bottom-\(k\)比較には含めない．三集合内ではfrontierとhistoryの
+新規cell数中央値・平均が同じであり，AUCにより第二段階へfrontierを採用した．
+frontierの新規cell数は \([1,1,2,2,2]\)，historyは \([1,3,0,2,2]\) である．
+三集合の全15 runで \code{candidate\_size\_violations=0} であった．
+
+rootは平均52.2 rollout，frontierは356.8 rolloutである．rootから終端までが長いため，
+同じ総step予算では摂動試行回数が少ない．この差を含めてもrootが四形状へ早期到達したため，
+本例では初期分岐の再samplingが有効であった．ただし，これは一構造・5 seedの結果であり，
+root再始動の一般的優位を示さない．
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{output/root_location_comparison_full/stage1_candidate_sets/discovery_curves.png}
+\caption{root controlを含む第一段階の終端cell discovery curve．線はseed平均，帯はseed最小--最大．}
+\label{fig:stage1-curve}
+\end{figure}
+
+保存済み旧10 bootstrap経路へ現行terminal descriptorを適用しても，式\eqref{eq:four-known-cells}と同じ
+4 shape，4 cellへ分類された．したがって今回の形状数差はdescriptorによる統合ではない．
+旧経路の保存外側stepは89，初期摂動を加えて99であるが，各重力stepで最大200 CMA世代を使う．
+現行は8世代なので，外側step数だけによる旧実装との計算量比較は行わない．
+
+\subsection{第二段階：random/UCB/SM-UCB}
+
+第一段階と重ならない5 seedで，frontier規則を固定して三選択器を比較した．
+
+\begin{table}[H]
+\centering
+\caption{第二段階：frontier内の位置選択器比較（各5 seed，800 step）}
+\label{tab:stage2-results}
+\begin{tabular}{lrrrr}
+\toprule
+選択器 & 新規cell 平均 $\pm$ SD & 中央値 & new-cell AUC 平均 $\pm$ SD & elite長中央値の平均\\
+\midrule
+random & $1.6\pm0.55$ & 2 & $1.429\pm0.484$ & 17.2\\
+通常UCB & $1.6\pm0.55$ & 2 & $1.511\pm0.500$ & 17.1\\
+SM-UCB & $1.6\pm0.55$ & 2 & $1.540\pm0.517$ & 17.1\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+最終新規cell数は，各seed内で三選択器すべて同じであった．
+よって，800 step時点の最終coverageについてrandomに対するUCB/SM-UCBの優位は観測されていない．
+一方，AUCのseed内差は
+\begin{align}
+  \operatorname{AUC}_{\mathrm{UCB}}-\operatorname{AUC}_{\mathrm{random}}
+  &=0.082\pm0.128,\\
+  \operatorname{AUC}_{\mathrm{SM}}-\operatorname{AUC}_{\mathrm{random}}
+  &=0.111\pm0.136,\\
+  \operatorname{AUC}_{\mathrm{SM}}-\operatorname{AUC}_{\mathrm{UCB}}
+  &=0.029\pm0.024
+\end{align}
+であった．SM-UCBのAUCはrandomより5/5 seed，通常UCBより5/5 seedで大きかった．
+ただし \(n=5\) で差も小さく，kernel/hyperparameterを一組しか試していない．
+これは「SM-UCBが多くのcellを発見した」という結果ではなく，
+この条件では既知cell数が同じになるまでの発見時期がわずかに早かったという予備的観察である．
+
+SM-UCBの平均wall timeは約16.3秒，random/UCBは約7.4秒であり，kernel推論の計算費が増えた．
+本稿の予算はmechanics stepで，selectorのCPU時間を含めない．実時間を目的とする場合はこの差を別途扱う必要がある．
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{output/nonstationary_protocol/stage2_selectors/discovery_curves.png}
+\caption{第二段階の終端cell discovery curve．最終coverageは同一だが，発見時期に小差がある．}
+\label{fig:stage2-curve}
+\end{figure}
+
+\subsection{結果から分かることと分からないこと}
+
+今回のfive-bar例では，root 0.22が既知の4形状へ早期到達したのに対し，途中状態集合は主として
+二形状の重なり順違いを発見した．したがって現設定の主要なbottleneckは，終端descriptorではなく，
+初期分岐を候補から除くことと摂動半径である可能性が高い．
+一方，frontier内の三選択器は最終coverageが同じであり，AUC差だけが観測された．
+これはarchive contextを用いた現在限界利得推定が初期配分に影響した可能性と整合する．
+ただし，真の \(\Delta_t(v)\) をprobeしていないため，SM-UCB posteriorの校正やarm順位精度は未確認である．
+
+\section{非定常性を主因子にする以前の予備検討}
+\label{sec:legacy}
+
+本節は研究経緯を後から確認するための記録であり，現行二段階実験の性能根拠には用いない．
+
+\subsection{旧三手法}
+
+以前の実装は次の三方法を同時比較した．
+\begin{enumerate}
+  \item event条件とnoveltyで抽出した最大160状態を，状態単位lifetime UCBで選び，random摂動する方法．
+  \item 状態descriptorを固定幅binへ量子化した最大256 cellのbounded archiveを，cell単位lifetime UCBで選び，random摂動する方法．
+  \item 最大3回の摂動と待機stepの可変長系列をgenotypeとし，終端cellへMAP-Elites保存する方法．
+\end{enumerate}
+
+旧state-restart報酬は，新規終端cell，elite改善，探索repository更新を混合し，rollout stepで割っていた．
+\begin{equation}
+  r^{\mathrm{old}}
+  =\frac{20}{C}
+  \left(
+  \ind[\text{new cell}]
+  +0.35\,\ind[\text{elite improved}]\,\Delta L
+  +0.10\,\ind[\text{repository gain}]
+  \right).
+\end{equation}
+これをlifetime平均へ蓄積したため，coverageの現在限界利得，新旧elite品質，
+bounded repositoryの置換という異なる非定常要因が一つのscoreへ入っていた．
+また，event状態数とbounded cell数は同一でなく，候補集合と選択器の効果を分離していなかった．
+
+\subsection{保存済み旧結果}
+
+\code{output/final_demo_current/} に，seed 17，bootstrap後800 stepの単一seed動作確認が残っている．
+bootstrapは2終端cellであった．
+
+\begin{table}[H]
+\centering
+\caption{旧アルゴリズムの単一seed動作確認（歴史的記録）}
+\label{tab:legacy-result}
+\small
+\begin{tabularx}{\linewidth}{Xrrrrr}
+\toprule
+旧手法 & 最終cell & 形状数 & layer数 & AUC & elite長\\
+\midrule
+Event + UCB + random & 3 & 3 & 3 & 2.1375 & 16\\
+Bounded + UCB + random & 5 & 4 & 4 & 2.7288 & 16\\
+摂動系列MAP-Elites & 4 & 4 & 3 & 3.4388 & 14\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+この例ではbounded archiveが最も多い5 cellを保存した．しかし，単一seed，異なる候補数，異なるarm単位，
+混合報酬，系列法だけ初期状態から再計算という条件であり，候補集合またはUCBの一般的優位を示さない．
+現行実験とはseedとアルゴリズムも異なるため，表\ref{tab:stage1-results}--\ref{tab:stage2-results}との数値差を
+改善・悪化として直接解釈しない．旧コードは再現用に残すが，現在のcommand-line入口からは呼ばない．
+
+\section{妥当性への脅威と今後の検証}
+\label{sec:limitations}
+
+\subsection{理論保証の適用範囲}
+
+固定候補，固定emitter分布，独立な終端標本，coverage目的に限定すると，
+式\eqref{eq:missing-mass}はarchive成長とともに減少し，submodular discoveryとして解釈できる．
+しかし実際の探索では，選択した状態から新しい候補状態が生成され，将来のaction setが変化する．
+これは単なるdiminishing returnsに加え，stepping stoneの解放という相乗効果を生む可能性がある．
+したがってSM-UCBの \(O(\sqrt{T\beta_T\gamma_T})\) boundやadaptive greedyの \((1-1/e)\) 保証を，
+現行木探索全体へ主張できない．epoch固定はこの差を小さくする実装上の措置である．
+
+\subsection{数値例と統計量}
+
+five-bar linkage一例，stageあたり5 seedでは，汎用性を十分に検証できない．
+特に終端cell数が小さく最終coverageが飽和したため，selector差は主にAUCへ現れた．
+rootが有利だったことも，初期状態近傍でassembly modeが分岐するfive-bar固有の性質であり得る．
+seedを増やし，予算を変え，異なる自由度・support overlap・rare cellをもつ構造で再評価する必要がある．
+実構造例が少ない場合は，既知のcell生成分布をもつsynthetic discovery benchmarkを併用し，
+通常UCBが崩れる条件とSM-UCBが有効な条件を分離する．
+
+\subsection{候補集合比較の交絡}
+
+三active集合の要素数は同じでも，frontierは深い状態，historyは長経路の中間状態，eventはevent数の多い経路を
+多く含みやすい．また独立end-to-end runでは，最初の選択差が後のhistory差へ増幅する．
+root controlは一候補なので同数条件の外にあり，途中状態集合との比較は「単一固定起点」と「圧縮された複数起点集合」の
+方策比較である．またroot 0.08は摂動位置と半径が交絡するため，位置比較の主根拠にはroot 0.22だけを用いる．
+候補集合そのものの一歩先の生産性を測るには，共通history snapshotで三集合を凍結し，
+同じarchiveに対するpaired rolloutをbatch評価する追加実験が有用である．
+
+\subsection{可変rollout cost}
+
+frontierは終端に近く，一rolloutが短いため，同じ総stepで多くの摂動を試せる．実測平均はroot 52.2回に対し
+frontier 356.8回であった．
+これは有限数値計算予算という目的には実質的な利点である一方，arm一pull同一費用のbandit理論とは異なる．
+今後は，一rollout当たり利得と一mechanics-step当たり利得を分け，
+\begin{equation}
+  U_t^{\mathrm{cost}}(v)
+  =\frac{U_t^{\Delta}(v)}{\widehat{\mathbb E}[C(v)]+\varepsilon}
+\end{equation}
+のcost-aware版を独立条件として比較する．
+
+\subsection{非定常性の直接診断}
+
+探索の25\%, 50\%, 75\%, 90\%時点でarchiveと候補集合をsnapshotし，同じ状態から多数のprobe rolloutを行えば，
+現在成功率 \(\widehat\Delta_t(v)\) を近似できる．これとlifetime平均，SM-UCB posterior，window平均を比較し，
+\begin{enumerate}
+  \item 現在成功率のbias/Brier error，
+  \item arm順位のSpearman相関とtop-\(k\)一致率，
+  \item archive成長に対する減衰と順位反転，
+  \item 異なるarmが同じcellを生むsupport overlap
+\end{enumerate}
+を測る．この診断により，「報酬は形式的に非定常」という指摘から，
+「どの程度探索配分を害したか」という実証へ進める．
+
+\subsection{次の比較候補}
+
+現行二段階比較の次に，次を優先する．
+\begin{enumerate}
+  \item rootを常時少確率で再選択するmixtureと，early-depth層化候補集合の比較，
+  \item 摂動半径の事前固定sweepと，半径をactionに含める探索の比較，
+  \item frozen-arm probeによるlifetime UCBとSM-UCBの現在限界利得推定精度の比較，
+  \item sliding-window UCB，Good-UCB，FEWA型scoreの適用条件を明示した比較，
+  \item descriptor archiveを第四の候補集合として同数条件で追加，
+  \item random emitterを固定した後，CMA-ME emitterを独立因子として追加，
+  \item 複数摂動のmacro-action化とUCT/progressive widening，または摂動系列MAP-Elitesの再比較．
+\end{enumerate}
+
+\section{結論}
+
+多様な平坦終端cellを発見する探索では，新規cell報酬が現在archiveに依存するため，
+各状態の価値を固定平均として扱えない．さらに，候補集合への圧縮自体が有望状態を失う可能性をもつ．
+本稿はこの二要因を，候補集合の第一段階と選択器の第二段階に分けた．
+
+第一段階では，root再始動controlを加え，frontier/event/historyのraw universeをfixed priority bottom-\(k\)で
+常に同数化した．five-barでは，同じ半径0.22のroot再始動が全5 seedで既知の4形状を発見し，
+途中状態三集合より形状多様性が高かった．一方，半径0.08のbootstrap反復は2形状に留まり，
+摂動位置だけでなく摂動量が到達basinを支配することが分かった．三集合内ではfrontierとhistoryの最終発見数が同率で，
+AUCによりfrontierを採用した．
+第二段階では，random，通常UCB，archive contextを用いるSM-UCBの最終coverageは同一であった．
+SM-UCBはAUCで全5 seedにおいてわずかに上回ったが，最終発見数を増やしたわけではない．
+
+したがって，現時点の主な成果はroot再始動の一般的優越やscoreアルゴリズムの優越を確定したことではなく，
+非定常なcoverage rewardと動的候補集合を混同せず比較できる実験基盤を構築し，
+初期分岐，摂動半径，途中状態集合，集合内scoreを別因子として評価する必要性と，
+通常UCBとSM-UCBの差が現れる評価量を明確にしたことである．
+
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}

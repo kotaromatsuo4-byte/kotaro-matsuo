@@ -1,0 +1,1235 @@
+% !TeX program = lualatex
+\documentclass[a4paper,11pt]{ltjsarticle}
+
+\usepackage[margin=24mm,headheight=18pt]{geometry}
+\usepackage{amsmath,amssymb,bm,mathtools}
+\usepackage{booktabs,longtable,tabularx,array}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{url}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!45!black,
+  urlcolor=blue!55!black,
+  pdftitle={ori-codex4 3Dトラス平坦折りたたみ 数理・実装仕様書},
+  pdfauthor={Implementation preparation document}
+}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0.25\baselineskip}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=2.2em}
+\renewcommand{\arraystretch}{1.25}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{ori\_codex4 3Dトラス平坦折りたたみ}
+\fancyhead[R]{数理・実装仕様書}
+\fancyfoot[C]{\thepage}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+\newcommand{\abs}[1]{\left\lvert #1\right\rvert}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\orth}{\operatorname{orth}}
+\newcommand{\rank}{\operatorname{rank}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\Code}[1]{\texttt{\detokenize{#1}}}
+
+\title{\textbf{ori\_codex4 の3次元トラスへの一般化}\\
+数理定式化・実装仕様・検証結果}
+\author{実装・検証資料}
+\date{2026年8月25日版}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+本資料は，固定した初期形状から棒長を保って3次元トラスを運動させ，
+最良適合平面への残差を小さくすると同時に，平面内の無次元直径
+（spread）を指定値へ制御する \Code{ori_codex4} の数理，3次元実装，
+および検証結果をまとめる．対象は4-unit torusの
+$D^\star=2$，waterbombの $D^\star=1$ および
+$D^\star=\sqrt2$ である．報酬式は変更せず，連続棒交差判定，
+$h_{\max}=0.1L_0$，および報酬へ影響しない剛体運動診断だけを追加した．
+constructive replayによりtorusの $D^\star=2$ とwaterbombの
+$D^\star=1$ が，支持を追加せず，自己交差なしで到達可能であることを確認した．
+一方，独立first-discovery比較ではwaterbomb $D^\star=\sqrt2$ において
+uniform randomがlearningより明確に早く，長期学習後のheld-out成功率も0であった．
+waterbomb $D^\star=1$ では全手法が共通予算内に発見できず，
+pilotでは自己交差終了が局所的に有利なreturnとなった．
+したがって，今回の固定報酬係数のままでは，
+「初回発見をrandomより早め，学習後も安定し，spreadを制御する」
+というfive-barでの有効性を3次元構造へ一般化できたとは結論できない．
+主因として，成功経路上の一時的なflatness悪化，終端でしか与えられない
+near-miss信号，自己交差による早期終了，およびtorusの剛体回転modeへの
+行動配分を特定した．
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+\section{目的，判定対象，コード境界}
+
+本検証では，次の三つを分離して評価した．
+
+\begin{enumerate}
+  \item \textbf{到達可能性}: 棒長制約と自己交差条件の下で，指定spreadを持つ平坦形状へ到達できるか．
+  \item \textbf{初回発見}: 学習する方策が，同じmechanics step予算のuniform randomより早く，厳密成功を初めて発見するか．
+  \item \textbf{学習後の安定性と制御性}: 学習後の独立な確率的評価で高い成功率を保ち，$D^\star$ を変えた別runが対応するspreadへ収束するか．
+\end{enumerate}
+
+数理的な本体は \Code{ori_codex2.py}，\Code{ori_codex3.py}，
+\Code{ori_codex4.py} である．\Code{ori_codex4_3d.py} は，
+$k=2$ の平坦度，モデル読込み，$h_{\max}=0.1L_0$ の既定値，
+3次元交差判定の一時的差替え，および剛体運動ログを追加するadapterであり，
+状態，行動，報酬，Actor-Critic更新式を変更しない．
+\Code{collision_3d.py} は非隣接棒の連続proper crossingを検出する．
+
+\paragraph{重要な解釈}
+この問題には節点ごとの目標座標を与えない．目標は
+「平坦度が許容値以下」かつ「無次元spreadが指定範囲内」という集合である．
+したがって，同じ $D^\star$ を満たす複数の平坦形状はすべて成功候補になる．
+
+\section{トラスモデルと無次元化}
+
+\subsection{節点，部材，支持}
+
+節点数を $N$，部材数を $M$ とし，節点座標を
+\begin{equation}
+  \bm{x}=\begin{bmatrix}\bm{x}_1^\mathsf{T}&\cdots&\bm{x}_N^\mathsf{T}\end{bmatrix}^\mathsf{T}
+  \in\R^{3N},\qquad \bm{x}_i\in\R^3
+\end{equation}
+と書く．部材 $e$ の端点を $i_e,j_e$，初期長を
+\begin{equation}
+  \ell_e=\norm{\bm{x}_{i_e}^{(0)}-\bm{x}_{j_e}^{(0)}}_2
+\end{equation}
+とする．\Code{fix.dat} は固定するscalar自由度 $(i,c)$ の集合を与え，
+その補集合を自由自由度index集合 $\mathcal I_f$ とする．
+3次元adapterは支持条件を追加も削除もしない．
+
+座標scaleには初期状態の最大部材長
+\begin{equation}
+  L_0=\max_{e=1,\ldots,M}\ell_e
+\end{equation}
+を用いる．NN状態，spread，経路長はいずれも $L_0$ で無次元化する．
+観測は座標だけであり，
+\begin{equation}
+  \bm{s}_t=\frac{\bm{x}_t}{L_0}\in\R^{3N}
+\end{equation}
+である．$D^\star$ はrunごとに固定された環境parameterであり，現実装では
+\emph{NN入力に含まれない}．したがって異なる $D^\star$ を一つの条件付き方策で扱う実装ではなく，
+目標値ごとに別々に学習・評価する実装である．
+
+\subsection{対象モデルの監査値}
+
+表\ref{tab:model}の値は，現在のmodel fileとadapterの計算規則から得られる構造情報であり，
+学習結果ではない．丸め前の $h_{\max}$ はコード上で $0.1L_0$ として計算される．
+
+\begin{table}[htbp]
+\centering
+\caption{対象モデルと固定された幾何parameter}
+\label{tab:model}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{34mm}*{3}{>{\centering\arraybackslash}X}}
+\toprule
+項目 & 4-unit torus & waterbomb, $D^\star=1$ & waterbomb, $D^\star=\sqrt2$ \\
+\midrule
+$N$ / $M$ & $20/52$ & $7/12$ & $7/12$ \\
+固定scalar自由度数 & $3$ & $6$ & $6$ \\
+初期機構mode数 & $5$ & $3$ & $3$ \\
+初期の支持適合剛体mode数 & $3$ & $0$ & $0$ \\
+$L_0$ & $\simeq2$ & $3$ & $3$ \\
+$h_{\max}=0.1L_0$ & $\simeq0.2$ & $0.3$ & $0.3$ \\
+無次元目標spread $D^\star$ & $2$ & $1$ & $\sqrt2$ \\
+対応する実寸直径 $L_0D^\star$ & $\simeq4$ & $3$ & $3\sqrt2$ \\
+初期平坦度potential $P_2(\bm{x}_0)$ & $\simeq16$ & $\simeq0.8011506572$ & 同左 \\
+非隣接棒pair数 & $1098$ & $33$ & $33$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{棒長制約，多様体，機構mode}
+
+\subsection{制約関数とJacobian}
+
+各棒に対して二乗長の制約
+\begin{equation}
+  g_e(\bm{x})=\frac12\left(
+  \norm{\bm{x}_{i_e}-\bm{x}_{j_e}}_2^2-\ell_e^2
+  \right)=0
+  \label{eq:constraint}
+\end{equation}
+を置き，$\bm{g}(\bm{x})\in\R^M$ とまとめる．自由自由度だけを列に持つJacobian
+$\bm{J}_f(\bm{x})\in\R^{M\times n_f}$ の部材 $e$ の行は
+\begin{equation}
+  \frac{\partial g_e}{\partial\bm{x}_{i_e}}
+  =(\bm{x}_{i_e}-\bm{x}_{j_e})^\mathsf{T},\qquad
+  \frac{\partial g_e}{\partial\bm{x}_{j_e}}
+  =-(\bm{x}_{i_e}-\bm{x}_{j_e})^\mathsf{T}
+\end{equation}
+であり，それ以外は0である．
+
+自由座標空間での一次機構空間を
+\begin{equation}
+  \widetilde{\mathcal M}(\bm{x})
+  =\ker\bm{J}_f(\bm{x})\subset\R^{n_f}
+\end{equation}
+とする．自由座標を全座標へ埋め込む行列を
+$\bm E_f\in\R^{3N\times n_f}$ とする．SVDで特異値が
+$10^{-8}$ より大きい個数をrankとし，得られた自由座標上の
+正規直交nullspace basisを
+$\widetilde{\bm M}_t\in\R^{n_f\times m_t}$ とすると，
+実際にActorへ渡す全座標mode行列は
+\begin{equation}
+  \bm M_t=\bm E_f\widetilde{\bm M}_t
+  \in\R^{3N\times m_t}
+\end{equation}
+である．したがって
+$\bm J_f\widetilde{\bm M}_t=\bm0$，
+$\widetilde{\bm M}_t^\mathsf T\widetilde{\bm M}_t=\bm I$ であり，
+$\bm M_t$ の固定自由度成分は0である．$m_t$ は形状によって変化し得る．
+ここでrank判定の $10^{-8}$ は相対値でなく絶対閾値である．
+
+\paragraph{実装上の注意}
+SVDの列符号，列順，特異値が近い部分空間内の回転は一意ではない．
+Actorはmodeごとに同じencoderを適用するため列順の入替えには対応しやすいが，
+一般の直交基底回転に対して厳密な不変性を持たない．特異形状付近でmode数や基底が急変する場合は，
+学習不安定性の原因候補として記録する必要がある．
+
+\subsection{predictor-corrector}
+
+Actorが選んだ単位方向
+$\bm d_t\in\operatorname{span}(\bm M_t)\subset\R^{3N}$ と符号付き幅
+$w_t\in[-h_{\max},h_{\max}]$ から
+\begin{equation}
+  \bm{x}^{\mathrm{pred}}=\bm{x}_t+w_t\bm{d}_t
+\end{equation}
+を作る．correctorは自由自由度で
+\begin{equation}
+  \Delta\bm{x}_f=-\bm{J}_f(\bm{x})^\dagger\bm{g}(\bm{x})
+  \label{eq:corrector}
+\end{equation}
+を反復し，制約残差normが小さくなるstepだけをbacktrackingで採用する．
+現実装の内部上限は30 Newton反復，1反復あたり20回のbacktracking，
+$\norm{\bm g}_2\le10^{-10}$ で終了である．
+
+corrector後のcandidate $\bm{x}_{t+1}$ は次をすべて満たすときだけ採用する．
+\begin{align}
+  \sum_e\left(
+  \norm{\bm{x}_{i_e,t+1}-\bm{x}_{j_e,t+1}}_2-\ell_e
+  \right)^2 &\le \varepsilon_{\mathrm{strain}},\\
+  \norm{\bm{x}_{t+1}-\bm{x}^{\mathrm{pred}}}_F
+  &\le c_{\mathrm{corr}}\abs{w_t},\\
+  \norm{\bm{x}_{t+1}-\bm{x}_t}_F
+  &\le c_{\mathrm{actual}}\abs{w_t}.
+\end{align}
+不合格なら $w_t\leftarrow\eta_{\mathrm{shrink}}w_t$ として再試行する．
+幅縮小を開始した後，$\abs{w_t}<h_{\min}$ までcandidateを採用できなければ
+\Code{correction_failed} である．ただし，
+$\norm{\bm d_t}_2\le10^{-12}$，またはrequested幅が最初から
+$h_{\min}$ 未満ならprojectorを呼ばず，不変状態，accepted幅0，
+\Code{correction_failed=false} を返す．これは1 mechanics stepとして数えられる．
+
+ここでのstepは「Actorが1回行動し，必要なら複数回projectorを呼んだ単位」である．
+したがって評価ではepisode数だけでなく，mechanics step数とprojector call数を区別する．
+
+\section{平坦度とspread}
+
+\subsection{\texorpdfstring{$k$}{k} 次元PCA平坦度}
+
+重心を $\bar{\bm{x}}=N^{-1}\sum_i\bm{x}_i$，中心化座標行列を
+\begin{equation}
+  \bm{X}_c=
+  \begin{bmatrix}
+  (\bm{x}_1-\bar{\bm{x}})^\mathsf{T}\\[-1mm]
+  \vdots\\[-1mm]
+  (\bm{x}_N-\bar{\bm{x}})^\mathsf{T}
+  \end{bmatrix}
+  =\bm U\bm\Sigma\bm V^\mathsf T
+\end{equation}
+とする．最良適合affine $k$ 次元部分空間への二乗距離和は
+\begin{equation}
+  P_k(\bm{x})=\min_{\dim\mathcal A=k}
+  \sum_{i=1}^N\operatorname{dist}(\bm{x}_i,\mathcal A)^2
+  =\sum_{j=k+1}^{3}\sigma_j^2.
+  \label{eq:flatness}
+\end{equation}
+正規化flatness ratioと参考用RMSは
+\begin{equation}
+  F_t=\frac{P_k(\bm{x}_t)}{P_k(\bm{x}_0)},\qquad
+  d_{\mathrm{RMS},t}=\frac{1}{L_0}\sqrt{\frac{P_k(\bm{x}_t)}{N}}.
+\end{equation}
+成功判定が使うのは $F_t$ であり，$d_{\mathrm{RMS},t}$ ではない．
+3次元から平面へ折る今回の設定は $k=2$ なので，
+$P_2=\sigma_3^2$ である．この定義は平面の向きを固定せず，剛体回転に不変である．
+
+\subsection{最良適合平面内の無次元直径}
+
+$\bm V_k=[\bm v_1,\ldots,\bm v_k]$ とし，各節点を最良適合部分空間へ投影した座標を
+\begin{equation}
+  \bm{y}_i=\bm V_k^\mathsf T(\bm{x}_i-\bar{\bm{x}})\in\R^k
+\end{equation}
+とする．spreadは全節点pairの投影距離の最大値
+\begin{equation}
+  D(\bm{x})=\frac{1}{L_0}\max_{i,j}\norm{\bm{y}_i-\bm{y}_j}_2
+  \label{eq:spread}
+\end{equation}
+である．$k=2$ では最良適合平面内の最大節点間距離を最大初期部材長で割った量になる．
+平坦形状でない途中状態にも同じ定義を適用する．
+
+目標誤差，二乗energy，Gaussian品質は
+\begin{equation}
+  e_D=\abs{D-D^\star},\qquad
+  E(D)=(D-D^\star)^2,\qquad
+  Q_D^{\mathrm{Gauss}}=\exp\left[-\frac12
+  \left(\frac{D-D^\star}{\sigma_D}\right)^2\right].
+\end{equation}
+既定のpath-integrated報酬では $E$ を使い，
+$Q_D^{\mathrm{Gauss}}$ は既定の成功bonusが $B_{\mathrm{flat}}=0$ のため診断値に留まる．
+
+\subsection{成功集合}
+
+評価用の厳密成功は
+\begin{equation}
+  F_t\le\varepsilon_F
+  \quad\land\quad
+  \abs{D_t-D^\star}\le\varepsilon_D
+  \quad\land\quad
+  \text{valid transition}
+  \label{eq:success}
+\end{equation}
+である．validとはself-crossingもcorrection failureもないことをいう．
+$F_t\le\varepsilon_F$ だがspread条件を外す状態は \Code{wrong_flat} であり，
+path-integrated設定ではその最初の到達でepisodeを終了する．
+
+学習curriculumを使う場合はactive toleranceを別に持ち得るが，held-out評価と
+first-discovery benchmarkは常にevaluation tolerance $\varepsilon_F$ による
+\Code{strict_compact_success} を用いる．既定設定ではcurriculumを使わず，両者は等しい．
+
+\section{可変mode Actor-Critic}
+
+\subsection{mode混合分布}
+
+各mode $\bm m_{t,j}$ と状態 $\bm s_t$ を共有MLPへ入力してfeature
+\begin{equation}
+  \bm f_{t,j}=f_{\mathrm{mode}}([\bm s_t,\bm m_{t,j}])
+\end{equation}
+を得る．MLPは2層，hidden幅96，活性化はtanhである．各modeの潜在係数は独立Gaussian
+\begin{align}
+  \mu_{t,j}&=\tanh(a_\mu(\bm f_{t,j})),\\
+  v_{t,j}&=v_{\min}+(v_{\max}-v_{\min})
+  \operatorname{sigmoid}(a_v(\bm f_{t,j})),\\
+  z_{t,j}&\sim\mathcal N(\mu_{t,j},v_{t,j})
+\end{align}
+からsampleする．現在値は $v_{\min}=10^{-4}$，$v_{\max}=2$ である．
+$\bm z_t$ を正規化して $\bm c_t=\bm z_t/\norm{\bm z_t}_2$ とし，
+\begin{equation}
+  \tilde{\bm d}_t=\bm M_t\bm c_t,\qquad
+  \bm d_t=\frac{\tilde{\bm d}_t}{\norm{\tilde{\bm d}_t}_2}
+\end{equation}
+を作る．最大絶対成分を持つpivotが負なら $(\bm c_t,\bm d_t)$ の符号を同時反転し，
+方向を一つの半球へcanonicalizeする．移動の正負は次のsigned widthだけが担う．
+
+\subsection{step幅分布}
+
+mode featureの平均
+$\bar{\bm f}_t=m_t^{-1}\sum_j\bm f_{t,j}$ と
+$[\bm s_t,\bm d_t,\bar{\bm f}_t]$ を別の2層tanh MLPへ入力する．
+幅Gaussianの平均は
+\begin{equation}
+  \mu_{w,t}=c_\mu\tanh(\tilde\mu_{w,t}/c_\mu),
+  \qquad c_\mu=3,
+\end{equation}
+分散はmode係数と同じbounded variance写像で得る．潜在幅
+$u_t\sim\mathcal N(\mu_{w,t},v_{w,t})$ を
+\begin{equation}
+  w_t=h_{\max}\tanh u_t
+  \label{eq:width}
+\end{equation}
+と変換する．決定論評価ではGaussian sampleを各平均で置換する．
+
+score-functionには変換後ではなく潜在Gaussianの
+\begin{equation}
+  \log\pi_t=\sum_{j=1}^{m_t}\log\mathcal N(z_{t,j};\mu_{t,j},v_{t,j})
+  +\log\mathcal N(u_t;\mu_{w,t},v_{w,t})
+\end{equation}
+を使う．entropy正則化はmode数への依存を弱めるため，
+mode entropyの平均とwidth entropyの和を使う．
+
+\subsection{Critic}
+
+Criticは状態を $f_V^s(\bm s_t)$ でencodeし，
+$[\bm s_t,\bm m_{t,j}]$ の共有encodeをmode間平均したものと結合して
+$V_\phi(\bm s_t,\bm M_t)$ を出力する．modeの列数が変わっても同じnetworkを使える．
+Actor parameterとCritic parameterは重複しないよう明示的に分割される．
+
+\section{ori\_codex4 の報酬}
+\label{sec:reward}
+
+\subsection{dense報酬の厳密式}
+
+flatness ratioのclipを
+\begin{equation}
+  \bar F_t=\clip(F_t,0,F_{\mathrm{clip}}),
+\end{equation}
+corrector後の無次元実移動量を
+\begin{equation}
+  \Delta L_t=\frac{\norm{\bm x_{t+1}-\bm x_t}_F}{L_0}
+\end{equation}
+とする．valid transitionに対する既定dense報酬は
+\begin{align}
+ r_t^{\mathrm{dense}}
+ ={}&\alpha(\bar F_t-\bar F_{t+1})
+ +\beta(E_t-E_{t+1}) \notag\\
+ &-\lambda\frac{E_t+E_{t+1}}{2}\Delta L_t,
+ \qquad E_t=(D_t-D^\star)^2.
+ \label{eq:dense}
+\end{align}
+第1項は平坦方向，第2項は目標spread方向のpotential差，第3項は目標spreadから外れたまま
+実際の制約多様体上を移動することへの台形則line integralである．
+この第3項により，途中で一度目標spreadへ近づいてから離れて戻るような冗長経路は，
+始点終点が同じでも追加costを持つ．
+
+$\gamma=1$ でtrajectory $0,\ldots,T$ に沿って和を取ると
+\begin{align}
+ \sum_{t=0}^{T-1}r_t^{\mathrm{dense}}
+ ={}&\alpha(\bar F_0-\bar F_T)
+ +\beta(E_0-E_T)\notag\\
+ &-\lambda\sum_{t=0}^{T-1}
+ \frac{E_t+E_{t+1}}2\Delta L_t.
+ \label{eq:telescoping}
+\end{align}
+最初の二項はtelescopingし，最後だけが経路依存である．その意味を保つため，
+\path{quality_combination=path_integrated_target_deviation} は
+$\gamma=1$ を必須にしている．stepを細分しても最後の項は同じ幾何線積分へ近づくため，
+$h_{\max}$ の変更に対して単純なstep penaltyより頑健である．
+
+self-crossingまたはcorrection failureのcandidateはadmissible path上の状態ではないため，
+式\eqref{eq:dense}の全成分を0にする．
+
+\subsection{valid terminal near-miss bonus}
+
+評価flatness toleranceを $\varepsilon_F$，spread toleranceを $\varepsilon_D$，
+品質を0にする遠方thresholdを $F_{\mathrm{far}}$ と $e_{D,\mathrm{far}}$ とする．
+\Code{ori_codex4} は
+\begin{align}
+ q_F(F)&=\clip\left(
+ \frac{\log\left(F_{\mathrm{far}}/\max(F,\varepsilon_F)\right)}
+ {\log(F_{\mathrm{far}}/\varepsilon_F)},0,1\right),\\
+ q_D(e_D)&=\clip\left(
+ \frac{e_{D,\mathrm{far}}-e_D}
+ {e_{D,\mathrm{far}}-\varepsilon_D},0,1\right),\\
+ q(F,e_D)&=q_F(F)q_D(e_D)
+ \label{eq:near-miss}
+\end{align}
+を計算し，validな \Code{success}，\Code{wrong_flat}，\Code{timeout} の終端だけに
+\begin{equation}
+  r_T^{\mathrm{near}}=B_q q(F_T,e_{D,T})
+  \label{eq:near-bonus}
+\end{equation}
+を1回加える．積を使うため，一方だけが良い終端は大きなbonusを受けない．
+また $q_F$ はflatnessの桁数改善を段階的に評価し，$q_D$ はspread誤差を線形に評価する．
+この項が「まだ成功ではないが両条件に近い終端」を強める \Code{ori_codex4} 固有部分である．
+
+必要条件は
+\begin{equation}
+ F_{\mathrm{far}}>\varepsilon_F>0,
+ \qquad e_{D,\mathrm{far}}>\varepsilon_D\ge0,
+ \qquad B_q\ge0
+\end{equation}
+である．crossed candidateの形状から品質を計算してbonusを得ることはない．
+
+\subsection{終端処理の優先順位と総報酬}
+
+表\ref{tab:terminal}はpath-integrated設定の処理順である．
+$r_t^{\mathrm{dense}}$ はvalid stepの式\eqref{eq:dense}，
+$B_{\mathrm{joint}}$ はjoint success bonus，
+$B_{\mathrm{flat}}Q_D^{\mathrm{Gauss}}$ は任意のflat terminal bonusを表す．
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{31mm}>{\raggedright\arraybackslash}p{45mm}>{\raggedright\arraybackslash}p{68mm}}
+\caption{終端理由，優先順位，報酬}\label{tab:terminal}\\
+\toprule
+終端理由 & 条件 & そのstepの総報酬 \\
+\midrule
+\endfirsthead
+\toprule
+終端理由 & 条件 & そのstepの総報酬 \\
+\midrule
+\endhead
+\path{correction_failed} & projectionが最小幅まで失敗 & $-C_{\mathrm{num}}$．dense 0，near-missなし \\
+\Code{self_crossing} & 連続proper crossing & $0$．dense 0，crossing penaltyなし，near-missなし \\
+\Code{success} & 式\eqref{eq:success}（学習中はactive設定に注意） & $r_t^{\mathrm{dense}}+B_{\mathrm{joint}}+B_{\mathrm{flat}}Q_D^{\mathrm{Gauss}}+B_qq$ \\
+\Code{wrong_flat} & flatだがspread範囲外 & $r_t^{\mathrm{dense}}+B_qq$．既定path-integrated設定では追加罰なし \\
+\Code{no_modes} & 成功でなく，次状態のmode数0 & $r_t^{\mathrm{dense}}-C_{\mathrm{mode}}$．near-missなし \\
+\Code{timeout} & 上記に該当せず $t+1\ge S_{\max}$ & $r_t^{\mathrm{dense}}-C_{\mathrm{time}}+B_qq$ \\
+\Code{running} & 上記以外 & $r_t^{\mathrm{dense}}$ \\
+\bottomrule
+\end{longtable}
+
+同一stepで複数条件が成り立つ場合は表の上から優先する．例えばmax stepでsuccessすればsuccessであり，
+wrong-flatならtimeoutよりwrong-flatが優先される．actionを実行する前からmodeが0なら，
+episode runnerが直接 $-C_{\mathrm{mode}}$ を加えて終了し，terminal near-missはない．
+
+任意機能のcurriculum waypointを有効にした場合だけ，active toleranceとspread条件を初めて満たす
+valid transitionへ $B_{\mathrm{waypoint}}$ を一度加える．この判定は上表の終端分岐より先に行われ，
+correction failureとcrossingでは後から全報酬が上書きされる一方，running，success，wrong-flat，
+no-mode，timeoutでは該当するterminal componentと併存する．今回の基本候補は
+$B_{\mathrm{waypoint}}=0$ なので，通常の3次元検証には寄与しない．
+
+既定値では $B_{\mathrm{joint}}=10$，$B_{\mathrm{flat}}=0$，
+$C_{\mathrm{num}}=10$，$C_{\mathrm{mode}}=5$，$C_{\mathrm{time}}=1$，
+crossing penaltyは0である．
+
+\section{Monte Carlo Actor-Critic更新}
+
+各episode内でreturnを独立に計算した後，更新対象episode群の全transitionを
+flattenする．通常の学習runではbatch size本ごとに更新し，指定総episode数で
+終了する最後のpartial batchも1回更新する．
+episode $b$ の時刻 $t$ のreturnは
+\begin{equation}
+  G_{b,t}=\sum_{u=t}^{T_b-1}\gamma^{u-t}r_{b,u}
+\end{equation}
+である．advantageは
+\begin{equation}
+  A_{b,t}=G_{b,t}-V_\phi(\bm s_{b,t},\bm M_{b,t})
+\end{equation}
+とし，Actor側ではvalueをdetachする．batch中にtransitionが2個以上なら
+$A$ をbatch平均0，母標準偏差1へ標準化する．lossは
+\begin{align}
+ \mathcal L_{\mathrm{actor}}
+ &=-\frac1K\sum_{b,t}\log\pi_\theta(\bm z_{b,t},u_{b,t}\mid
+ \bm s_{b,t},\bm M_{b,t})\,\widehat A_{b,t},\\
+ \mathcal L_{\mathrm{critic}}
+ &=\frac1K\sum_{b,t}\left(V_\phi-G_{b,t}\right)^2,\\
+ \mathcal L_H&=-\frac1K\sum_{b,t}H_{b,t},\\
+ \mathcal L&=\mathcal L_{\mathrm{actor}}+c_V\mathcal L_{\mathrm{critic}}
+ +c_H\mathcal L_H.
+\end{align}
+ActorとCriticは別のAdam optimizerで更新し，gradient normをそれぞれ
+$g_{\theta,\max}$，$g_{\phi,\max}$ でclipする．平均はepisode単位でなくtransition単位なので，
+長いepisodeは多くのsample weightを持つ．一方，first-discovery harnessでは，
+batch size本の完了episodeが揃い，かつそのepisodeで成功または予算終了していない場合だけ更新する．
+成功または共通予算で即停止し，停止を契機とした追加updateは行わない．したがって，
+成功episodeを含むfull batchや，予算端で終わったfull batchも未更新のまま終了し得る．
+
+\section{3次元の連続proper crossing判定}
+\label{sec:collision}
+
+\subsection{判定する衝突と判定しない接触}
+
+棒は太さ0とする．現在実装が衝突とするのは，
+\begin{quote}
+非隣接2棒の内部同士が，corrector済みの二状態間を線形補間した開区間
+$0<t<1$ で，新たにtransversalなproper intersectionへ入る場合
+\end{quote}
+だけである．隣接棒，端点だけの接触，平行接触，共線overlap，開始時から持続する交差，
+$t=0$ または $t=1$ だけの接触は許容する．これはflat foldで棒が一致し得るための意図的な数理モデルであり，
+厚み，layer order，接合部体積を表現する物理衝突モデルではない．
+
+\subsection{非共面transition}
+
+二棒の端点を
+\begin{align}
+ \bm A(t)&=\bm a_0+t(\bm a_1-\bm a_0),&
+ \bm B(t)&=\bm b_0+t(\bm b_1-\bm b_0),\\
+ \bm C(t)&=\bm c_0+t(\bm c_1-\bm c_0),&
+ \bm D(t)&=\bm d_0+t(\bm d_1-\bm d_0)
+\end{align}
+とする．交差の必要条件である共面性はscalar triple product
+\begin{equation}
+ \chi(t)=\det\bigl(\bm B(t)-\bm A(t),
+ \bm C(t)-\bm A(t),\bm D(t)-\bm A(t)\bigr)
+ =c_0+c_1t+c_2t^2+c_3t^3
+ \label{eq:coplanar-poly}
+\end{equation}
+で表される．数値根のうち
+$\abs{\operatorname{Im}t}\le10^{-8}$ かつ $0<t<1$ を実根候補とし，
+隣接する根・端点間の代表点で
+$\chi$ の符号が実際に反転する根だけを候補にする．したがって接するだけの偶数重根は除外する．
+
+候補時刻で
+\begin{equation}
+ \bm u=\bm B-\bm A,\quad \bm v=\bm D-\bm C,\quad
+ \bm w=\bm A-\bm C
+\end{equation}
+とし，$a=\bm u\cdot\bm u$，$b=\bm u\cdot\bm v$，
+$c=\bm v\cdot\bm v$，$d=\bm u\cdot\bm w$，$e=\bm v\cdot\bm w$ と置く．
+最近点parameterは
+\begin{equation}
+ s=\frac{be-cd}{ac-b^2},\qquad
+ r=\frac{ae-bd}{ac-b^2}.
+\end{equation}
+次をすべて満たせばproper crossingとする．
+\begin{align}
+ \norm{\bm u\times\bm v}_2&>\varepsilon_{\parallel}\norm{\bm u}_2\norm{\bm v}_2,\\
+  \varepsilon_p<s&<1-\varepsilon_p,\qquad
+ \varepsilon_p<r<1-\varepsilon_p,\\
+ \norm{\bm A+s\bm u-(\bm C+r\bm v)}_2&\le\varepsilon_d.
+\end{align}
+
+\subsection{全時間で共面なtransition}
+
+式\eqref{eq:coplanar-poly}の全係数が幾何scale $L^3$ を考慮した閾値以下なら，
+transition全体を共面とみなす．$xy$，$xz$，$yz$ の三投影それぞれで，
+\begin{equation}
+ \operatorname{orient}(A(t),B(t),C(t))
+\end{equation}
+など4種類の2次多項式の根を集め，時間区間を分割する．各開区間の中点で
+proper intersectionを評価し，\Code{false} から \Code{true} へ変わる区間だけを新規衝突とする．
+最初の開区間ですでに交差している場合は開始時からのpersistent contactとして許容する．
+
+\subsection{broad phaseと数値閾値}
+
+各棒について開始・終了両状態の4端点を覆うswept axis-aligned bounding boxを作り，
+boxが重ならないpairはnarrow phaseへ送らない．本検証runの実効値は
+\begin{equation}
+ \varepsilon_d=10^{-10},\quad
+ \varepsilon_t=10^{-9},\quad
+ \varepsilon_p=10^{-3},\quad
+ \varepsilon_{\parallel}=10^{-10},\quad
+ \varepsilon_c=10^{-10}
+\end{equation}
+である．$\varepsilon_d$ はrunの \Code{crossing_tolerance} から渡される．
+checker単体の未指定時defaultは $10^{-9}$ であり，実験metadataには実効値を保存する．
+$\varepsilon_d$ は座標と同じ次元を持つ絶対距離閾値，$\varepsilon_p$ は各棒上の
+無次元parameter marginである．$\varepsilon_{\parallel}$ は角度のsineに対する無次元閾値，
+coplanarity係数の判定閾値は $\varepsilon_cL_{\mathrm{geom}}^3$ とscaleされる．
+したがってcollision判定全体が $L_0$ で完全に無次元化されているわけではない．
+pairはcache順に調べ，返す診断時刻は最初に検出したpair内のeventであって，
+全pairを通した大域最早eventとは限らない．episode終了のboolean判定には影響しない．
+
+\section{剛体運動を拘束しない設計と診断}
+\label{sec:rigid}
+
+\subsection{支持適合剛体空間}
+
+3次元の微小剛体運動generatorを，3並進と3回転からなる
+$\bm G(\bm x)\in\R^{3N\times6}$ とする．例えば回転axis $\bm e_j$ の列は
+\begin{equation}
+ \delta\bm x_i=\bm e_j\times(\bm x_i-\bm o)
+\end{equation}
+である．$\bm o$ の選択は並進generatorとの線形結合を変えるだけで，6次元spanを変えない．
+固定自由度を抜き出す行列を $\bm S_c$ とすると，支持を侵さない係数は
+\begin{equation}
+ \bm a\in\ker(\bm S_c\bm G).
+\end{equation}
+したがって $\bm N_R$ を $\ker(\bm S_c\bm G)$ の正規直交基底行列とし，
+支持適合剛体basisを
+\begin{equation}
+ \bm Q_R=\orth\left(\bm G\bm N_R\right)
+ \label{eq:rigid-basis}
+\end{equation}
+とする．固定成分は数値的に0へ戻す．このbasisはloggingのためだけに毎step再計算され，
+mode，状態，報酬，終了判定を変更しない．
+
+\subsection{commandと実変位の分解}
+
+$\bm P_R=\bm Q_R\bm Q_R^\mathsf T$ とし，任意のベクトル $\bm v$ を
+\begin{equation}
+ \bm v_R=\bm P_R\bm v,\qquad
+ \bm v_I=(\bm I-\bm P_R)\bm v,\qquad
+ \rho_R(\bm v)=
+ \begin{cases}
+ \dfrac{\norm{\bm v_R}_2^2}{\norm{\bm v}_2^2},&
+ \norm{\bm v}_2^2>10^{-24},\\
+ 0,&\text{otherwise}
+ \end{cases}
+ \label{eq:rigid-fraction}
+\end{equation}
+と分解する．$\bm v=\bm d_t$ でcommanded rigid energy fraction，
+$\bm v=\bm x_{t+1}-\bm x_t$ でactual rigid energy fractionを記録する．
+各stepのcommanded/actual fraction平均には自己交差等で無効になった最終actionも含む．一方，
+\Code{valid_path_rigid_energy_fraction} とrigid/internal path lengthは
+\Code{after_state_valid=1} のtransitionだけを合計する．
+
+mode basisを正規直交化した $\bm Q_M$ に対し，
+$\bm Q_R^\mathsf T\bm Q_M$ の特異値が $1-10^{-7}$ 以上の個数を
+mechanism内に捕捉された剛体rankとして監査する．初期4-unit torusでは
+$r_R=3$，全mode数 $m=5$ なので，等方的なuniform random方向の初期期待値は
+\begin{equation}
+  \mathbb E[\rho_R]=\frac{r_R}{m}=\frac35=0.6.
+\end{equation}
+
+flatnessとspreadは剛体運動に不変なので，pure rigid motionでは式\eqref{eq:dense}の
+最初の二項はほぼ0である．ただし $E(D)>0$ なら経路積分項が移動距離を罰するため，
+Actorが不要な剛体回転を抑える学習信号は存在する．$E(D)\simeq0$ ではこの信号も弱くなる．
+追加支持で回転を消すと潜在的な折状態を削る可能性があるため，現在の検証では支持を変えず，
+Actorとuniform randomの $\rho_R$ の差を診断する．
+
+\paragraph{診断上の限界}
+式\eqref{eq:rigid-fraction}は各step始点での\emph{微小}剛体空間への射影である．
+有限回転，correctorの曲率，特異点付近の基底変化を完全には分離しない．
+よって因果判定ではなく，$h_{\max}$ が小さい場合の局所的な説明指標として使う．
+
+\section{実装algorithm}
+
+\subsection{1 mechanics step}
+
+\begin{enumerate}
+  \item $\bm s_t=\bm x_t/L_0$ と
+  $\widetilde{\bm M}_t=\ker\bm J_f(\bm x_t)$ を求め，
+  $\bm M_t=\bm E_f\widetilde{\bm M}_t$ として全座標へ埋め戻す．$m_t=0$ なら終了する．
+  \item Actorから潜在mode係数 $\bm z_t$，単位方向 $\bm d_t$，潜在幅 $u_t$，requested幅 $w_t$ を得る．
+  \item predictorを作り，式\eqref{eq:corrector}で棒長制約へ戻す．局所性・strain条件を満たすまで幅を縮小する．
+  \item corrected transition $[\bm x_t,\bm x_{t+1}]$ に第\ref{sec:collision}節の連続交差判定を適用する．
+  \item $F_{t+1}$，$D_{t+1}$，式\eqref{eq:dense}を計算する．invalid transitionならdenseを0にする．
+  \item 優先順位に従ってterminationとterminal componentを決める．eligible terminalなら式\eqref{eq:near-bonus}を一度だけ加える．
+  \item trainingなら $(r_t,\log\pi_t,V_t,H_t)$ を保存する．geometryと各reward componentをログへ保存する．
+  \item 4-unit torusでは式\eqref{eq:rigid-fraction}の診断値を追加する．報酬へ戻さない．
+\end{enumerate}
+
+\subsection{学習run}
+
+\begin{enumerate}
+  \item seedを固定し，初期状態へresetしたepisodeをbatch size $B$ 本実行する．
+  \item 各episodeはsuccess，wrong-flat，crossing，correction failure，no-mode，timeoutのいずれかで完結させる．
+  \item 完了episodeだけからreturnとlossを計算し，ActorとCriticを1回更新する．
+  \item 指定milestoneでActor learning rateをfactor倍する．
+  \item selection用の独立seedで確率的評価し，最良checkpointを保存する．最終報告には別のfinal evaluation seedを使う．
+  \item first-discoveryの比較は評価rolloutを混ぜない専用harnessで別に行う．
+\end{enumerate}
+
+\subsection{first-discovery trial}
+
+\begin{enumerate}
+  \item methodを \Code{learning}，\Code{frozen}，\Code{uniform} から選ぶ．同じtrial seedのlearningとfrozenは同一初期NNを使う．
+  \item fixed startからepisodeを繰り返し，厳密成功または累積mechanics budget $B_{\mathrm{mech}}$ で停止する．
+  \item learningだけ，batch size本の完了episodeが揃い，かつそのepisodeでstrict hitまたは予算到達していない場合に更新する．発見・予算到達と同時のfull batch，予算で途中打切りされたepisode，最後のpartial batchは更新しない．
+  \item 初回成功時のepisode，mechanics step，projector call，経路を保存する．未成功なら右打切りとして保存する．
+\end{enumerate}
+
+uniformは現在のmode係数空間で標準正規乱数を正規化するため方向が単位球面上一様であり，
+signed widthは $[-h_{\max},h_{\max}]$ の一様分布である．frozenは学習NNと同じGaussian samplerを使うが更新しないため，
+「NNの初期分布」と「学習効果」を分離できる．
+
+\section{ハイパーパラメータ仕様と調整範囲}
+\label{sec:hyper}
+
+報酬式は構造間で変更しない．調整可能なのはoptimizer，batch，episode horizon，探索予算，
+数値solver toleranceなどである．表\ref{tab:reward-hyper}は報酬側の固定値，
+表\ref{tab:search-hyper}は構造別の探索候補を示す．ここで「候補」は短いscreening設定であり，
+下段には独立first-discovery比較で固定した再現用設定も併記する．
+これらは今回の比較を再現する値であり，他構造への推奨値や有効性を意味しない．
+
+\begin{table}[htbp]
+\centering
+\caption{構造間で固定する報酬・判定parameter}
+\label{tab:reward-hyper}
+\begin{tabular}{lll}
+\toprule
+parameter & 記号 & 検証固定値 \\
+\midrule
+flatness progress weight & $\alpha$ & $1$ \\
+target progress weight & $\beta$ & $1$ \\
+path cost weight & $\lambda$ & $1$ \\
+discount & $\gamma$ & $1$（必須） \\
+flatness clip & $F_{\mathrm{clip}}$ & $2$ \\
+strict flatness tolerance & $\varepsilon_F$ & $10^{-3}$ \\
+spread tolerance & $\varepsilon_D$ & $0.05$ \\
+joint success bonus & $B_{\mathrm{joint}}$ & $10$ \\
+near-miss weight & $B_q$ & $1$ \\
+near-miss flatness far & $F_{\mathrm{far}}$ & $1$ \\
+near-miss spread-error far & $e_{D,\mathrm{far}}$ & $1$ \\
+timeout / numerical / no-mode & $C_{\mathrm{time}},C_{\mathrm{num}},C_{\mathrm{mode}}$ & $1,10,5$ \\
+wrong-flat / crossing penalty & -- & $0,0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{モデル別の探索候補と独立first-discovery比較の採用値}
+\label{tab:search-hyper}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{39mm}>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
+\toprule
+parameter & torus $D^\star=2$ & waterbomb $D^\star=1$ & waterbomb $D^\star=\sqrt2$ \\
+\midrule
+$h_{\max}$ & $0.1L_0\simeq0.2$ & $0.1L_0=0.3$ & $0.1L_0=0.3$ \\
+$h_{\min}$ & $10^{-4}$ & $10^{-4}$ & $10^{-4}$ \\
+projection shrink & $0.5$ & $0.5$ & $0.5$ \\
+max correction / actual ratio & $1.0/1.25$ & $1.0/1.25$ & $1.0/1.25$ \\
+strain / crossing tolerance & $10^{-8}/10^{-10}$ & 同左 & 同左 \\
+初期screening horizon & $200$ & $400$ & $400$ \\
+batch候補 & $8,32$ & $8,32$ & $8,32$ \\
+Actor / Critic LR候補中心 & $10^{-3}/3\cdot10^{-4}$ & 同左 & 同左 \\
+hidden size & $96$ & $96$ & $96$ \\
+entropy / value coefficient & $10^{-3}/0.5$ & 同左 & 同左 \\
+Actor / Critic grad clip & $0.5/1.0$ & 同左 & 同左 \\
+初期variance bias & $-1.0986122887$ & 同左 & 同左 \\
+最終比較batch & $32$ & $8$ & $8$ \\
+最終比較horizon & $200$ & $400$ & $400$ \\
+Actor / Critic LR & $10^{-3}/3\cdot10^{-4}$ & $5\cdot10^{-4}/1.5\cdot10^{-4}$ & 同左 \\
+mechanics budget / seed数 & $102400/10$ & $102400/10$ & $102400/10$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+調整は同じseedで結果を選び過ぎないよう，少数seedのscreeningと，固定済みparameterでの独立な最終seed群を分ける．
+$D^\star=\sqrt2$ が可到達spread範囲の境界にある場合，$\varepsilon_D$ の内側に存在する形状体積が小さくなり得るため，
+単純にlearning rateだけを変える前に，幾何的可到達性とflat terminal集合のmeasureを確認する．
+
+\section{評価設計，打切り，RMST}
+\label{sec:evaluation}
+
+\subsection{公平な初回発見比較}
+
+主比較はlearning対uniformであり，frozenを補助比較にする．全methodで以下を一致させる．
+
+\begin{itemize}
+  \item 初期形状，支持，$D^\star$，$h_{\max}$，$S_{\max}$，projection，交差判定，成功判定．
+  \item trialごとの累積mechanics budget $B_{\mathrm{mech}}$ とseed集合．
+  \item episodeは毎回同じfixed startから開始すること．
+  \item strict compact successをeventとし，評価rolloutを発見数へ混ぜないこと．
+\end{itemize}
+
+mechanics budget最後のtransitionは通常どおり計算し，それが通常の終端でなければ
+\Code{benchmark_budget} として行政的に打ち切る．この打切りはtimeout penaltyやnear-miss bonusを新たに発生させない．
+予算最後のtransition自体には元の\Code{ori_codex4}報酬を保持するが，行政的打切りepisodeは
+学習updateへ使用しない．checkpointは完了batch境界でのみ保存され，resumeはその境界から行う．
+任意のepisode途中状態を保存・再開する方式ではない．
+
+\subsection{累積mechanics stepのRMST}
+
+trial $i$ の初回成功stepを $T_i$，共通予算を $B$ とする．未成功trialは $B$ で右打切りとし，
+\begin{equation}
+ \widetilde T_i=\begin{cases}
+ T_i,&T_i\le B\text{ で成功},\\
+ B,&\text{未成功}
+ \end{cases}
+\end{equation}
+を作る．全打切りが共通の $B$ だけなら，経験Kaplan-Meier曲線のrestricted mean survival timeは
+\begin{equation}
+ \widehat{\operatorname{RMST}}(B)
+ =\int_0^B\widehat S(t)\,dt
+ =\frac1n\sum_{i=1}^{n}\widetilde T_i.
+ \label{eq:rmst}
+\end{equation}
+これは成功例だけの平均と異なり，未成功を捨てない．小さいほど早く発見したことを表す．
+同時に success-at-budget，成功例内median，projector call，wall timeを報告する．
+
+任意のepisode capがmechanics budgetより先に働いたtrialを一律 $B$ に割り当てる現harnessの値は保守的指標であり，
+純粋なmechanics時間のKaplan-Meier RMSTと厳密には同じでない．最終比較では原則としてepisode capを使わず
+共通mechanics budgetだけで打ち切るか，別の打切り時刻を保持するsurvival推定へ拡張する．
+
+episode指標は共通episode上限
+\begin{equation}
+ E_{\mathrm{common}}
+ =\min\left(E_{\max},\left\lfloor\frac{B_{\mathrm{mech}}}{S_{\max}}\right\rfloor\right)
+\end{equation}
+（episode capがなければ第1項を除く）で制限し，同様にrestricted mean episodeを出す．
+ただしepisode長がmethodで変わるため，主指標は累積mechanics stepとする．
+
+\subsection{paired比較と不確実性}
+
+同じseedのlearningとbaselineに対し
+\begin{equation}
+ \Delta_i=\widetilde T_i^{\mathrm{learning}}
+ -\widetilde T_i^{\mathrm{baseline}}
+\end{equation}
+を計算し，平均 $\bar\Delta$，learningが早い比率，tie比率を報告する．
+$\bar\Delta<0$ がlearningの高速化，$\bar\Delta>0$ がlearningの遅延を表す．
+本解析ではseedを再標本化するpercentile bootstrap 95\%区間をpaired差と
+method別RMSTに，Wilson 95\%区間を成功率と自己交差率に用いた．
+ただしseed数は10であり，多重比較を含む確認的検定ではないため，
+区間は効果量の不確実性を表す探索的指標として解釈する．
+learningとfrozenでは，初期model hashと最初の未更新batchの
+action trace hashが全seedで一致することを監査した．
+
+\subsection{学習後の安定性とspread制御}
+
+初回発見用trialとは別に，checkpointを固定し，学習に使っていないseedで確率的rolloutを行う．
+最低限，次を目標値ごとに報告する．
+
+\begin{itemize}
+  \item strict compact success率と区間推定，self-crossing率，correction failure率，timeout率．
+  \item $F_T$，$D_T$，$\abs{D_T-D^\star}$，episode step，projector call．
+  \item 学習curve，終端near-miss $q_F,q_D,q$，dense報酬各成分．
+  \item torusではcommanded/actual rigid energy fractionとrigid/internal path length．
+  \item $D^\star=1$ と $\sqrt2$ の成功終端spread分布が，許容幅を考慮して分離するか．
+\end{itemize}
+
+決定論1本の成功だけを「安定」と呼ばない．確率的held-out成功率を主指標とし，決定論pathは再現可能な代表例として添える．
+
+\section{実験結果}
+\label{sec:results}
+
+\subsection{独立first-discovery比較}
+
+各targetについて，learning，初期Actorを固定したfrozen，
+およびuniform randomを同じ10 seed，共通mechanics budget
+$B_{\mathrm{mech}}=102400$ で比較した．評価rolloutは探索budgetへ混ぜず，
+未発見trialも除外せず右打切りとしてrestricted mean survival time（RMST）へ含めた．
+表中の $\bar\Delta_{\mathrm{L-U}}$ と $\bar\Delta_{\mathrm{L-F}}$ は，
+各seedで未発見を102400 stepとして割り当てたlearningとの差であり，
+正値はlearningが遅いことを表す．
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{独立first-discovery比較。RMSTは未発見trialを102400 stepで
+右打切りした値であり，小さいほど早い。}
+\label{tab:first-discovery-results}
+\begin{tabularx}{\textwidth}{
+ >{\raggedright\arraybackslash}p{43mm}
+ *{3}{>{\centering\arraybackslash}X}}
+\toprule
+指標
+ & torus $D^\star=2$
+ & waterbomb $D^\star=1$
+ & waterbomb $D^\star=\sqrt2$ \\
+\midrule
+learning発見数 / 10
+ & $0/10$ & $0/10$ & $6/10$ \\
+frozen発見数 / 10
+ & $0/10$ & $0/10$ & $9/10$ \\
+uniform発見数 / 10
+ & $0/10$ & $0/10$ & $10/10$ \\
+learning mechanics RMST
+ & $102400$ & $102400$ & $69594.2$ \\
+frozen mechanics RMST
+ & $102400$ & $102400$ & $44571.0$ \\
+uniform mechanics RMST
+ & $102400$ & $102400$ & $18132.5$ \\
+learning episode RMST
+ & $512.0$ & $256.0$ & $186.4$ \\
+frozen episode RMST
+ & $512.0$ & $256.0$ & $125.2$ \\
+uniform episode RMST
+ & $512.0$ & $256.0$ & $52.4$ \\
+$\bar\Delta_{\mathrm{L-U}}$ [step]
+ & $0.0$ & $0.0$ & $+51461.7$ \\
+learningがuniformより早いseed
+ & $0/10$ & $0/10$ & $0/10$ \\
+$\bar\Delta_{\mathrm{L-F}}$ [step]
+ & $0.0$ & $0.0$ & $+25023.2$ \\
+learningがfrozenより早いseed
+ & $0/10$ & $0/10$ & $3/10$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+torusとwaterbomb $D^\star=1$ は3手法とも全seedが予算打切りであり，
+paired差0は同等性能の証拠ではなく，現在の予算では比較不能であることを表す．
+$D^\star=\sqrt2$ ではuniformが全seedで発見し，
+learningより平均 $51461.7$ mechanics step早かった．
+learningがuniformより早いseedは一つもなく，frozenもlearningより低いRMSTを得た．
+paired $\Delta_{\mathrm{L-U}}$ のbootstrap 95\%区間は
+$[33043.1,70498.4]$ stepで0を含まなかった．一方，
+$\Delta_{\mathrm{L-F}}$ は $+25023.2$ stepだが区間
+$[-9815.3,56900.3]$ は0を含むため，learningとfrozenの差は確定的でない．
+最速発見はlearningが10603 step（episode 28），frozenが6943 step
+（episode 20），uniformが70 step（episode 1）であった．
+learningとfrozenの初期Actor hashおよび更新前action traceは
+全10 seedで一致したため，この差は初期条件差ではなく，
+更新後に生じたnegative transferと解釈できる．
+
+\subsection{pilotと長期安定性}
+
+24本のhyperparameter tuningおよびrescue runの集計を
+表\ref{tab:pilot-summary}に示す．短いscreeningは最終first-discovery比較には
+混ぜず，失敗機構の診断だけに用いた．
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{全pilot runの終端集計。S: success，X: self-crossing，
+W: wrong-flat，C: correction failure，T: timeout。}
+\label{tab:pilot-summary}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+target & run数 & episode & mechanics step & S & X & W & C & T \\
+\midrule
+torus $D^\star=2$ & 8 & 1728 & 345600 & 0 & 0 & 0 & 0 & 1728 \\
+waterbomb $D^\star=1$ & 8 & 1728 & 324255 & 0 & 1423 & 7 & 0 & 298 \\
+waterbomb $D^\star=\sqrt2$ & 8 & 1728 & 456327 & 28 & 1067 & 31 & 2 & 600 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+採用候補seed 107では，torusはtraining・held-outとも成功0，
+waterbomb $D^\star=1$ も成功0で，held-out 8本はすべて自己交差した．
+$D^\star=\sqrt2$ はtrainingで $11/256$ 成功し，
+末尾64 episodeでも3回成功したが，held-outは $2/8$，
+成功率25\%のWilson 95\%区間は $[7.15,59.07]\%$ であり，
+決定論pathは失敗した．すなわち，短いtraining内の発見だけでは
+安定な方策獲得を意味しなかった．
+
+seed 109の512-episode rescueでは，torusの既定設定と
+$q_F$ far閾値を2へ広げた設定の双方が
+$(S,X,W,T)=(0,0,0,512)$ であった．
+後者は終端品質を約0.056まで増やしたが，flatness改善や成功には結び付かなかった．
+waterbomb $D^\star=1$ の既定設定は
+$(0,471,0,41)$，spread far閾値を0.25へ狭めた設定は
+$(0,472,0,40)$ であり，調整後も自己交差basinを除けなかった．
+$D^\star=\sqrt2$ の既定設定は $(4,432,16,60)$，
+低learning-rate設定は $(2,385,15,110)$ であり，
+双方のheld-out成功率は0であった．
+
+同じseed 109を20-rolloutの周期評価付きで再実行したところ，
+training historyとupdate historyのhashは元runと完全一致した．
+選択されたbest policyはepisode 1で，選択用20本では成功 $1/20$，
+自己交差 $8/20$ であったが，独立100本では成功 $0/100$，
+自己交差 $37/100$ であった．episode 512のlast policyは独立100本で
+成功 $0/100$，自己交差 $94/100$，wrong-flat $6/100$ となり，
+training末尾64 episodeも成功率0，自己交差率96\%であった．
+独立100本で0成功のWilson 95\%上限は3.70\%である．
+したがって，初期探索で得られた稀な成功を更新が安定化せず，
+むしろ自己交差方策へ崩壊した．
+
+\subsection{到達可能性と報酬谷}
+
+RLが発見しないことと幾何的不可到達を分離するため，
+現在のpredictor/corrector，支持，step上限，交差判定，
+成功判定をそのまま用いてconstructive pathを再生した．
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{自己交差なしのconstructive reachability witness。}
+\label{tab:constructive-witness}
+\begin{tabularx}{\textwidth}{
+ >{\raggedright\arraybackslash}p{39mm}
+ >{\centering\arraybackslash}X
+ >{\centering\arraybackslash}X}
+\toprule
+指標 & torus $D^\star=2$ & waterbomb $D^\star=1$ \\
+\midrule
+transition数 & 162 & 20 \\
+最大requested/accepted幅 & $0.09921<0.2$ & $0.293886<0.3$ \\
+proper crossing数 & 0 & 0 \\
+終端flatness比 $F$ & $9.0790\cdot10^{-4}$ & $3.0145\cdot10^{-8}$ \\
+終端spread $D$ & $1.999953$ & $1.000000$ \\
+最大棒長誤差 & $1.461\cdot10^{-12}$ & $1.818\cdot10^{-11}$ \\
+最大支持座標drift & 0 & 0 \\
+最小prefix reward & $-0.475909$ (step 41) & $-0.930936$ (step 9) \\
+prefix rewardの非負復帰 & step 69 & step 14 \\
+累積reward & $12.009744$ & $12.081785$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+torus witnessは保存済みCMA-ES座標列を細分し，
+各状態で瞬間mechanism modeへ射影して現在のcorrectorで再生したものである．
+waterbomb witnessは対称制約continuationを同様にmode actionへ変換した．
+いずれも現在のActorが表現可能な行動列であり，追加支持を使っていない．
+ただし，これは存在証明であってRLによる発見ではない．
+waterbombの完全flat終端には共線・重複棒が含まれるが，
+本検証のzero-thickness定義ではpersistent overlapを許容する．
+
+両成功経路とも，目標へ単調に近づかない．torusでは
+$F$ が初期値1から最大1.49566へ，waterbombでは2.10270へ一度悪化した．
+そのため初期数十stepの累積rewardは負となる．
+near-miss bonus $B_q$ はvalidなsuccess，wrong-flat，timeoutの終端にだけ入り，
+通常の途中状態やself-crossing終端には入らない．
+したがって，良い経路上に段階的な終端品質が定義されていても，
+最初の成功前にこの報酬谷を越えるcreditを十分伝えられない．
+
+waterbomb $D^\star=1$ の512-episode runでは，
+self-crossing終端471本の平均returnは $-0.93485$，
+timeout 41本は $-3.32558$ であった．
+交差reward自体は0でも，早期終了により負のpath costとtimeout penaltyを
+回避できるため，自己交差が相対的に有利な局所解となった．
+$D^\star=\sqrt2$ でも平均returnはself-crossing $-0.1367$，
+timeout $-2.0151$，success $12.0011$，wrong-flat $+1.346$
+（平均 $q\simeq0.741$）であり，self-crossingとwrong-flatの双方が
+更新を引き付ける局所basinになった．
+
+\subsection{剛体回転診断}
+
+torus初期状態では，全5 modeのうち支持適合剛体modeが3であるため，
+isotropic random方向の剛体energy期待値は $3/5=0.6$ である．
+pilotの確率的学習経路のactual rigid fractionは $0.639$--$0.727$，
+決定論経路では $0.795$--$0.969$ であり，期待値を下回らなかった．
+commanded値とactual値の差は $4\cdot10^{-4}$ 未満であり，
+この回転はcorrectorが作ったのではなくActor自身が選択していた．
+一方，成功constructive replayのactual rigid fractionは約0.240で，
+元の二つのCMA-ES経路でも0.2325および0.1920であった．
+したがって，「NNが不要な剛体回転係数を自律的に0へ近づける」
+という主張は今回の結果からは支持されない．
+
+回転を拘束する追加支持を置かなかったこと自体は，
+潜在的な折状態を削除しないという利点を保つ．
+ただし，探索効率を上げるには物理形状を拘束するのではなく，
+剛体運動を商空間化する，あるいは行動生成時だけgauge projectionする方法を
+別設計として検討する必要がある．
+
+\subsection{構造別結論}
+
+\begin{enumerate}
+  \item \textbf{torus $D^\star=2$}: 指定step上限と交差条件の下で到達可能である．
+  pilotでは全1728 episodeがtimeoutし，学習後成功も得られなかった．
+  独立first-discoveryでも3手法30 trialがすべて打切りとなったため，
+  現予算内に初回発見を早めた証拠も，手法間が同等である証拠もない．
+  \item \textbf{waterbomb $D^\star=1$}: 到達可能であるが，
+  独立比較の全30 trialが未発見であった．主因は成功経路前半の報酬谷と，
+  早期self-crossingがtimeoutより高いreturnを持つcredit assignmentである．
+  \item \textbf{waterbomb $D^\star=\sqrt2$}: 初回発見は可能であるが，
+  uniformとfrozenの方がlearningより早く，長期学習後の独立成功率は0であった．
+  「初回発見短縮」と「学習後の安定性」の双方を満たさない．
+\end{enumerate}
+
+以上より，今回の3 targetではspreadを変えた別runが異なる平坦終端へ
+到達し得ることは確認できたが，\Code{ori_codex4} の固定報酬設計が
+randomより初回発見を早め，その後の方策を安定化するという一般的有効性は
+示されなかった．
+
+\section{診断基準}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{38mm}>{\raggedright\arraybackslash}p{52mm}>{\raggedright\arraybackslash}p{55mm}}
+\toprule
+観測 & 主な原因候補 & 追加確認 \\
+\midrule
+flatnessが初期値付近から下がらない & 内部modeに対して剛体modeが多い，Actor分散過大，SVD基底の不連続，horizon不足 & $\rho_R$，minimum $F$，mode rank，幅分布，frozen/uniformとの差 \\
+spreadは合うがflatにならない & $\beta,\lambda$ の信号が早期に強く，flatness項を相対的に圧倒 & reward各成分のscale，$F$ と $E$ のjoint trajectory \\
+flatになるがwrong-flatだけ & 目標branchへのbasinが狭い，$D^\star$ が可到達境界，near-miss $q_D$ が終端でほぼ0 & flat endpointのspread分布，幾何最適化による可到達性，$q_F,q_D$ \\
+crossing終了が多い & branch間移動がproper crossingを要する，stepがまだ大きい，数値閾値感度 & crossing時刻・棒pair，$h$ 半減再生，collision tolerance感度 \\
+correction failureが多い & predictorが多様体曲率に対して大きい，Jacobian悪条件，特異点 & projection試行回数，correction ratio，特異値，accepted幅 \\
+training成功するがheld-out失敗 & 分散collapse，seed過適合，checkpoint選択bias & stochastic entropy，複数seed，frozen比較，成功率区間 \\
+learningとfrozenが同じ & 更新信号が小さい，batch/LR不適，発見が更新前の偶然 & 更新前trace一致，gradient norm，policy KL相当量，first hit前update数 \\
+uniformも極端に速い & $h$ または許容値が緩い，成功集合が大きい & $h=0.1L_0$確認，strict tolerance，mechanics RMST分布 \\
+\bottomrule
+\end{longtable}
+
+\section{実装checklist}
+
+\subsection{モデルと単位}
+
+\begin{itemize}
+  \item \Code{node_initial.dat} は $N\times3$，\Code{member.dat} と \Code{fix.dat} は2列である．index範囲とfinite値を検査する．
+  \item 初期棒長 $\ell_e$ と $L_0$ を一度だけ保存し，全無次元量が同じ $L_0$ を使う．
+  \item torusは $D^\star=2$，waterbombは別runで $1$ と $\sqrt2$ を使う．
+  \item $k=2$ を強制し，$P_2(\bm x_0)>10^{-12}$ を確認する．
+\end{itemize}
+
+\subsection{mechanicsと行動}
+
+\begin{itemize}
+  \item 毎stepで現在Jacobianからnullspaceを再計算し，可変mode数をNNへ渡す．
+  \item fixed自由度をmodeとcorrectorの両方で動かさない．追加支持を入れない．
+  \item requested幅とaccepted幅，projection回数，strain，correction norm，actual displacementを別々に記録する．
+  \item $h_{\max}$ を明示しなければadapterが $0.1L_0$ を設定することをconfigに保存する．
+\end{itemize}
+
+\subsection{報酬と終了}
+
+\begin{itemize}
+  \item 式\eqref{eq:dense}のbefore/afterは同じspreadとflatness関数を使う．path incrementはcorrected displacementである．
+  \item path-integrated設定で $\gamma=1$ を検査する．
+  \item invalid candidateのdense成分をすべて0にし，crossingの総報酬を0，correction failureを $-C_{\mathrm{num}}$ にする．
+  \item near-missはvalidなsuccess/wrong-flat/timeoutだけに1回付与し，評価toleranceを使う．
+  \item first-discovery eventはtraining用success fieldではなく \Code{strict_compact_success} を使う．
+\end{itemize}
+
+\subsection{交差判定}
+
+\begin{itemize}
+  \item topologyごとに非隣接棒pairをcacheし，毎stepはswept AABBから始める．
+  \item 実根は開区間だけ，非共面caseは符号反転根だけを候補にする．
+  \item 棒parameterの内部条件と非平行条件を満たすことを確認する．
+  \item terminal overlapを意図せず拒否しないunit testと，途中pass-throughを検出するunit testを持つ．
+\end{itemize}
+
+\subsection{再現性と評価}
+
+\begin{itemize}
+  \item model fileとsource fileのSHA-256，effective args，library version，seedを保存する．
+  \item learning/frozen/uniformを同じseed集合・同じmechanics budgetで実行する．
+  \item first hitまでの累積mechanics stepとprojector callをepisode番号と同時に保存する．
+  \item 打切りtrialを成功例平均から除外せず，式\eqref{eq:rmst}とsuccess-at-budgetを報告する．
+  \item path fileは \Code{step0.dat}, \Code{step1.dat}, \ldots の形式で保存する．
+  \item tuning用の一時screening出力と最終検証出力を分離し，最終表は固定したrun configだけから作る．
+\end{itemize}
+
+\section{限界と拡張時の注意}
+
+\begin{enumerate}
+  \item \textbf{zero-thickness model}: 共線overlapや端点接触を許すため，実部材の厚み・panel干渉・layer順は保証しない．
+  \item \textbf{linear swept path}: 交差判定はcorrected状態間の線形補間であり，真の制約多様体上の連続軌道そのものではない．$h$ を小さくすることが近似の妥当性に重要である．
+  \item \textbf{非隣接棒のみ}: 同一節点を共有する棒の局所的な反転やjoint干渉は衝突としない．必要なら別のjoint modelが要る．
+  \item \textbf{接線接触を除外}: scalar triple productが符号反転しないtangent eventはproper pass-throughとしない．
+  \item \textbf{PCAの退化}: 対称形状や完全flat近傍で主方向が入れ替わり得る．$P_2$ と投影距離は幾何量として使えるが，微分可能性や数値連続性は別途確認が要る．
+  \item \textbf{目標値はNN入力でない}: spreadを変更すれば別学習が必要であり，「一つのpolicyが任意spreadを連続制御する」とは主張できない．
+  \item \textbf{報酬scale}: $F$ は初期potentialで正規化される一方，$E=(D-D^\star)^2$ はspread単位である．別構造でもweightを固定する検証は移植性を試すが，scale balanceが常に同じとは限らない．
+  \item \textbf{境界target}: 可到達spread範囲の端では成功集合が狭くなる場合も，許容領域が一方向にだけ切られることでrandom探索から入りやすくなる場合もある．本検証の $D^\star=\sqrt2$ はuniform/frozenでも高頻度に発見されており，境界targetであること自体をRL高速化の証拠にはできない．
+  \item \textbf{初回発見の統計}: seed数が少ないとheavy-tailなfirst-hit時間を比較できない．打切りを含むRMSTと不確実性区間が必要である．
+  \item \textbf{剛体診断}: 微小剛体分解はloggingのみであり，NNが回転を抑えたことと成功短縮の因果を単独では証明しない．今回のtorus事後診断では，学習経路の剛体energy fractionはrandom初期期待値0.6を下回らなかった．
+  \item \textbf{構造間のnegative transfer}: five-barで有効だった固定報酬係数は，mode次元，剛体mode比，flat終端集合のmeasure，$P_2/P_2(\bm x_0)$ とspread誤差のscaleが異なる3次元構造で同じcredit assignmentを保証しない．
+  \item \textbf{mode basisへの非不変性}: Actorはmode列の置換には対応しやすいが，SVD nullspace内の任意の直交回転には不変でない．特異点近傍のbasis回転や剛体・内部modeの混合が構造間転移を阻害し得る．
+  \item \textbf{collision toleranceのscale依存性}: 距離閾値は絶対座標単位，端点marginは棒上の相対parameterであり，構造scaleを変えた場合の判定不変性は保証されない．また $\varepsilon_p=10^{-3}$ により，端点近傍の内点交差を端点接触として除外し得る．
+\end{enumerate}
+
+\subsection*{本検証後の実装優先順位（未検証提案）}
+
+上の結果から，\Code{ori_codex4} をそのまま他構造へ移植することは推奨しない．
+次に実装する場合は，今回の固定報酬実験と混同せず，変更を一つずつablationする．
+
+\begin{enumerate}
+  \item self-crossingはepisode終了のまま維持しつつ，早期終了がtimeout継続より
+  高returnにならない明示penaltyまたは失敗時会計を設計する．
+  \item constructive witnessの中間状態を使うreverse curriculum，demonstration pretraining，
+  または成功近傍からのstart-state curriculumにより，非単調なflatness経路と
+  terminal-only near-missのcredit gapを分離して検証する．
+  \item torusでは追加支持を置かず，剛体方向を行動空間から商空間化する
+  gauge projectionをActor入力・出力の座標表現として検討する．
+  これは物理的な折状態を削除する支持拘束とは異なる．
+  \item 複数spreadを一つの方策で扱うなら，$D^\star$ をActor/Criticへ条件入力し，
+  構造間でmode基底に依存しにくいgraphまたは幾何不変なstate/action表現へ置き換える．
+  \item 改修後もlearning/frozen/uniformを共通mechanics budget・複数seedで比較し，
+  first discoveryと独立held-out安定性を別々のgateとして扱う．
+\end{enumerate}
+
+\appendix
+\section{数式とsourceの対応}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{46mm}>{\raggedright\arraybackslash}p{99mm}}
+\toprule
+source & 主な責務 \\
+\midrule
+\Code{ori_codex.py} & 棒長制約，free index，Jacobian，SVD nullspace，pseudo-inverse corrector \\
+\path{single_solution_common.py} & PCA flatness，strain，2次元版proper crossing \\
+\Code{ori_codex2.py} & fixed-start環境，predictor幅縮小，可変mode Actor/Critic，Monte Carlo更新，path保存 \\
+\Code{ori_codex3.py} & projected spread，target energy，path-integrated dense報酬，joint success，wrong-flat，uniform random \\
+\Code{ori_codex4.py} & valid terminal near-miss品質 $q_F,q_D,q$ と1回限りのbonus \\
+\Code{collision_3d.py} & 非隣接3次元棒のcontinuous proper crossing，swept AABB \\
+\Code{ori_codex4_3d.py} & 3次元model adapter，$h=0.1L_0$，collision hook，rigid diagnostics，metadata \\
+\path{ori_codex4_3d_first_discovery.py} & 共通mechanics budget，learning/frozen/uniform比較，打切り，RMST集計 \\
+\path{summarize_ori4_3d_transfer.py} & 完全集計の監査，first-discovery・held-out・feasibilityの統合，CSV/JSON/plot生成 \\
+\bottomrule
+\end{longtable}
+
+\section{最低限の数値test}
+
+\begin{enumerate}
+  \item 棒長制約を満たす小変位で，$\bm J_f\bm M\simeq0$，固定成分0，$\bm M^\mathsf T\bm M\simeq\bm I$ を検査する．
+  \item 一つの物理移動を2分割したとき，式\eqref{eq:dense}のpotential差は完全に一致し，path costは台形則誤差内で近づくことを検査する．
+  \item $F=\varepsilon_F,e_D=\varepsilon_D$ で $q_F=q_D=q=1$，far threshold以上で該当品質0となることを検査する．
+  \item crossed candidateにflatnessが良い座標を与えてもdense 0，near-miss 0，reward 0であることを検査する．
+  \item timeout，wrong-flat，successでnear-missが1回だけ入り，running stepでは入らないことを検査する．
+  \item 3次元棒が開区間でtransversalに通過するcaseを検出し，端点接触，共線overlap，persistent intersectionを許容することを検査する．
+  \item torus初期形状で支持適合剛体rank 3，全mode数5，uniform方向の多数sample平均 $\rho_R\simeq0.6$ を検査する．
+  \item first-discoveryでlearningとfrozenの初期model hash，最初の未更新batch action traceが一致することを検査する．
+\end{enumerate}
+
+\section{結果の再生成とartifact監査}
+
+最終結果は手作業で成功例を選ばず，次の監査経路から再生成した．
+
+\begin{enumerate}
+  \item 各targetについて
+  \Code{ori_codex4_3d_first_discovery.py --aggregate-only} を実行し，
+  expected method/seed集合，fingerprint，budget，horizonが一致し，
+  \Code{complete=true} のaggregateだけを受理する．
+  \item \Code{summarize_ori4_3d_transfer.py} はpartial aggregateを拒否し，
+  first-discovery trial，held-out rollout，constructive witnessを照合する．
+  \item 統合結果は \path{results.json}，\path{task_summary.csv}，
+  \path{first_discovery_trials.csv}，\path{heldout_rollouts.csv} と
+  3枚のplotへ出力する．
+  \item learning/frozenの初期model hashと更新前trace hash，
+  各model・source・path fileのSHA-256を保存値と照合する．
+  \item constructive pathは
+  \Code{step0.dat}, \Code{step1.dat}, \ldots の形式で保存し，
+  読戻し後にも棒長，支持，flatness，spread，交差数を再評価する．
+\end{enumerate}
+
+\end{document}

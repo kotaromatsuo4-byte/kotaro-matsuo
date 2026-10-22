@@ -2,6 +2,14 @@
 
 最終更新：2026-10-22（日本時間）。作業開始時は [AGENTS.md](AGENTS.md) と [CHATGPT.md](CHATGPT.md) を読む。
 
+## 2026-10-22：コミット対象の拡張子設定
+
+ユーザーの追加指示で、リポジトリ全体の `.py`・`.md`・`.tex` のみを追加対象とするルート `.gitignore` を作成。設定自体を保存できるようルート `.gitignore` は例外とした。従来の文書だけを共有する方針から、コードも管理対象にできる方針へ変更した。
+
+既存の追跡・ステージ済みファイルはすべて許可対象の拡張子だった。追跡解除やファイル削除は不要。設定準備後、ユーザーからコミット・pushの明示依頼を受けたため、許可拡張子のファイルとルート `.gitignore` をまとめて共有する。既存のステージ済みTeXも今回の対象に含む。
+
+`git check-ignore --no-index` でルート・階層下の許可／除外19例を確認し、すべて想定どおり。既存追跡ファイルの拡張子確認と `git diff --check` も通過。
+
 ## R-001：研究史の整理
 
 状態：完了。対象は `folding_path/`（`00_0930_all/` を除く）。研究コード・データはローカルに保持し、共有するのはMarkdown文書。
@@ -31,6 +39,17 @@
 
 ## Gitとローカル作業の注意
 
-共有先は `kotaromatsuo4-byte/kotaro-matsuo`、共有branchはmain。Git認証後の初回共有コミットは `46090881`。今回以前から `folding_path/00_0804_codex2/QD_FOLDING_METHODS.tex` がステージ済みであり、共有コミットへ含めない。
+共有先は `kotaromatsuo4-byte/kotaro-matsuo`、共有branchはmain。Git認証後の初回共有コミットは `46090881`。以前からステージ済みだった `folding_path/00_0804_codex2/QD_FOLDING_METHODS.tex` は、今回のコード共有依頼でコミット対象に含める。
 
-コード・出力・モデル・CADはローカルにある。GitHubの共有文書だけを取得したクラウド環境で、同じ実験をそのまま実行できるとは想定しない。各作業の終了時に、本ファイルへ対象・理由・検証結果・残る判断を追記する。
+コードは共有対象になったが、出力・モデル・CAD等はローカルにある。GitHubのファイルだけを取得したクラウド環境で、同じ実験をそのまま実行できるとは想定しない。各作業の終了時に、本ファイルへ対象・理由・検証結果・残る判断を追記する。
+
+## 2026-10-22：ソース・文書のGit共有
+
+ユーザーの依頼により、読める741ファイル（既存追跡分を含む）をコミット対象として確認。変更727件は `.py`・`.md`・`.tex` とルート `.gitignore` のみ。研究プログラムは実行・変更していない。
+
+OneDriveから読み取れない次の4件は追加待ち。空ファイルや推測した内容では代用しない。
+
+- `folding_path/00_0822_all/result/experiments/supervised_seven_d23_20260914_extended_v1/RESULTS_JA.md`
+- `folding_path/00_0822_all/result/experiments/supervised_seven_d23_20260914_extended_v1/d4_transfer/REPORT.md`
+- `folding_path/00_0822_all/result/experiments/supervised_seven_d23_20260914_v1/d4_transfer/REPORT.md`
+- `folding_path/00_0822_all/result/experiments/supervised_seven_d23_20260914_v1/d4_transfer/RESULTS_JA.md`

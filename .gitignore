@@ -1,0 +1,13 @@
+# Ignore all files by default.
+*
+
+# Traverse directories so allowed files can be found at any depth.
+!*/
+
+# Track source and documentation files only.
+!*.py
+!*.md
+!*.tex
+
+# Keep this repository's ignore policy under version control.
+!/.gitignore

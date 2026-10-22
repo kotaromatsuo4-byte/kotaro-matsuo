@@ -1,0 +1,2492 @@
+% !TeX program = lualatex
+% !TeX encoding = UTF-8
+% 確率論を未習の読者が，ガウス過程回帰と獲得関数を順に学べるように構成した資料．
+\RequirePackage{fix-cm}
+\RequirePackage{array}
+\documentclass[a4paper,11pt]{ltjsarticle}
+
+\usepackage[margin=23mm]{geometry}
+\usepackage{amsmath,amssymb,mathtools,bm,amsthm}
+\usepackage{booktabs,longtable,tabularx,array,float,multirow}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric,fit,backgrounds}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[most]{tcolorbox}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  citecolor=green!35!black,
+  urlcolor=blue!65!black,
+  pdftitle={確率論の基礎から学ぶガウス過程回帰とベイズ最適化},
+  pdfauthor={Kotaro Matsuo}
+}
+\urlstyle{same}
+
+\setlength{\parindent}{1\zw}
+\setlength{\parskip}{0.28\baselineskip}
+\setlength{\emergencystretch}{3\zw}
+\setlist{leftmargin=2.2\zw,itemsep=0.25\baselineskip,topsep=0.35\baselineskip}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+\newcommand{\E}{\mathbb E}
+\newcommand{\Pp}{\mathbb P}
+\newcommand{\R}{\mathbb R}
+\newcommand{\N}{\mathcal N}
+\newcommand{\GP}{\mathcal{GP}}
+\newcommand{\D}{\mathcal D}
+\newcommand{\A}{\mathcal A}
+\newcommand{\I}{\bm I}
+\newcommand{\T}{\mathsf T}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Corr}{\operatorname{Corr}}
+\newcommand{\tr}{\operatorname{tr}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\argmax}{\operatorname*{arg\,max}}
+\newcommand{\argmin}{\operatorname*{arg\,min}}
+\newcommand{\ind}{\mathbb I}
+\newcommand{\given}{\,\middle|\,}
+\newcommand{\normW}[1]{\left\lVert #1\right\rVert_W}
+\newcommand{\code}[1]{\nolinkurl{#1}}
+
+\definecolor{intuitionblue}{RGB}{228,241,252}
+\definecolor{checkgreen}{RGB}{231,247,236}
+\definecolor{cautionred}{RGB}{253,235,235}
+\definecolor{applicationorange}{RGB}{255,244,226}
+\definecolor{definitiongray}{RGB}{243,244,246}
+
+\newtcolorbox{intuitionbox}[1][]{
+  breakable,colback=intuitionblue,colframe=blue!45!black,
+  fonttitle=\bfseries,title={直感 #1},boxrule=0.55pt,arc=1.5mm
+}
+\newtcolorbox{definitionbox}[1][]{
+  breakable,colback=definitiongray,colframe=black!50,
+  fonttitle=\bfseries,title={定義 #1},boxrule=0.55pt,arc=1.5mm
+}
+\newtcolorbox{checkpointbox}[1][]{
+  breakable,colback=checkgreen,colframe=green!45!black,
+  fonttitle=\bfseries,title={ここまでの確認 #1},boxrule=0.55pt,arc=1.5mm
+}
+\newtcolorbox{cautionbox}[1][]{
+  breakable,colback=cautionred,colframe=red!55!black,
+  fonttitle=\bfseries,title={注意 #1},boxrule=0.55pt,arc=1.5mm
+}
+\newtcolorbox{applicationbox}[1][]{
+  breakable,colback=applicationorange,colframe=orange!65!black,
+  fonttitle=\bfseries,title={折り経路探索との接続 #1},boxrule=0.55pt,arc=1.5mm
+}
+
+\title{確率論の基礎から学ぶ\\
+ガウス過程回帰とベイズ最適化\\
+\large --- 多出力の分散・獲得関数・多様な平坦折り経路探索への応用 ---}
+\author{学習用ノート}
+\date{2026年8月14日}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+本資料は，確率論を未習の読者が，ガウス過程回帰（Gaussian process regression; GPR）の
+予測平均と予測分散がどこから現れるかを数式の流れに沿って理解するための学習ノートである．
+確率変数，期待値，分散，共分散，多変量正規分布，条件付き分布を順に導入し，
+カーネルを「入力の類似度」という略記ではなく「未知関数値間の事前共分散を定める規則」として説明する．
+その後，条件付き正規分布の公式からGPRの事後平均・事後共分散を導出し，
+周辺尤度によるハイパーパラメータ学習，多出力予測における分散と共分散の違いを整理する．
+
+後半では，GPRを代理モデルとして利用するベイズ最適化を扱う．
+予測平均最大化，Probability of Improvement（PI），Expected Improvement（EI），
+Upper Confidence Bound（UCB），Thompson sampling，Knowledge Gradient（KG），
+Entropy Search（ES），Predictive Entropy Search（PES），Max-value Entropy Search（MES），
+多目的・制約付き・コスト考慮・batch獲得関数を，同一の意思決定問題として比較する．
+最後に，現在状態と摂動から決定論的rollout後の終端descriptorを予測し，
+既存elite archiveからの距離と予測不確実性を用いて次の摂動を選ぶ
+archive-aware acquisitionを導出する．
+\end{abstract}
+
+\begingroup
+\small
+\tableofcontents
+\endgroup
+\clearpage
+
+\section{最初に全体像をつかむ}
+\label{sec:overview}
+
+\subsection{今回知りたい未知写像}
+
+多自由度折り構造の探索では，候補入力を
+\begin{equation}
+  \bm x
+  =
+  (\text{現在状態 }\bm q,\;\text{その状態へ与える節点変位 }\Delta\bm q)
+  \label{eq:application-input}
+\end{equation}
+とする．この候補を一度だけ厳密にcorrectorへ通し，その後に決定論的rolloutを行うと，
+平坦終端，衝突，数値失敗などの結果が得られる．平坦終端の連続descriptorを
+\begin{equation}
+  \bm Z(\bm x)
+  =\text{rollout後の終端descriptor}
+  \label{eq:terminal-map}
+\end{equation}
+と書く．本当に知りたいのは，未知だが固定された写像
+\begin{equation}
+  \bm x\longmapsto\bm Z(\bm x)
+\end{equation}
+である．一候補を実際にrolloutするのは高価なので，過去のrollout結果からこの写像を近似したい．
+
+\begin{definitionbox}[GPRと獲得関数の役割]
+\begin{description}
+  \item[ガウス過程回帰] 入力\(\bm x\)に対し，未知出力を一点予測するだけでなく，
+  「予測平均」と「どれくらい確信がないか」を表す予測分布を作る代理モデルである．
+  \item[獲得関数] 代理モデルの予測分布と現在の目的を受け取り，
+  次に実計算する候補へ安価なscoreを割り当てる意思決定規則である．
+\end{description}
+GPRと獲得関数は別物である．同じGPRに対して異なる獲得関数を選べるし，
+別の代理モデルに対しても獲得関数を設計できる．
+\end{definitionbox}
+
+\subsection{学習の一本道}
+
+本資料は次の依存関係に沿う．後半の式が分からなくなったときは，矢印を一つ戻ればよい．
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=6mm and 5mm,
+  every node/.style={draw,rounded corners,align=center,fill=blue!4,
+                     minimum height=9mm,font=\small},
+  arr/.style={-{Latex[length=2mm]},thick,blue!55!black}
+]
+  \node (p) {期待値・分散\\共分散};
+  \node[right=of p] (n) {多変量\\正規分布};
+  \node[right=of n] (c) {条件付き\\正規分布};
+  \node[right=of c] (k) {カーネル\\ガウス過程};
+  \node[below=of k] (g) {GPRの\\事後分布};
+  \node[left=of g] (b) {ベイズ最適化\\獲得関数};
+  \node[left=of b] (a) {archive-aware\\摂動選択};
+  \draw[arr] (p)--(n);
+  \draw[arr] (n)--(c);
+  \draw[arr] (c)--(k);
+  \draw[arr] (k)--(g);
+  \draw[arr] (g)--(b);
+  \draw[arr] (b)--(a);
+\end{tikzpicture}
+\end{center}
+
+\begin{intuitionbox}[本資料の中心]
+GPRの予測式は，突然現れる特殊な公式ではない．
+「訓練点での関数値」と「未知点での関数値」を一つの多変量正規分布に入れ，
+訓練値を観測したという条件を付けるだけである．
+したがって最大の山場は，\emph{条件付き多変量正規分布}と
+\emph{カーネルが共分散行列を作ること}の二点である．
+\end{intuitionbox}
+
+\section{確率を学ぶ前の記号と線形代数}
+\label{sec:linear-algebra}
+
+\subsection{スカラー，ベクトル，行列}
+
+一つの数をスカラーと呼ぶ．例えば温度\(x=20\)はスカラーである．
+複数の数を縦に並べたものをベクトルと呼ぶ．
+\begin{equation}
+  \bm x=
+  \begin{bmatrix}x_1\\x_2\\\vdots\\x_d\end{bmatrix}
+  \in\R^d.
+\end{equation}
+\(d\)は成分数である．行列\(\bm A\in\R^{m\times d}\)をベクトルに掛けると，
+\(\bm A\bm x\in\R^m\)となる．転置\(\bm x^\T\)は縦ベクトルを横にする操作であり，
+\begin{equation}
+  \bm x^\T\bm y=\sum_{j=1}^d x_jy_j
+\end{equation}
+は内積である．
+
+\subsection{二次形式と正定値性}
+
+対称正定値行列\(\bm W=\bm W^\T\succ0\)を用いて
+\begin{equation}
+  \|\bm x\|_W
+  =\sqrt{\bm x^\T\bm W\bm x}
+  \label{eq:w-norm}
+\end{equation}
+と定める．\(\bm W=\I\)なら通常のEuclidノルム
+\(\|\bm x\|_2=\sqrt{x_1^2+\cdots+x_d^2}\)である．
+すべての\(\bm x\neq\bm0\)に対し\(\bm x^\T\bm W\bm x>0\)なら，
+\(\bm W\)を正定値行列と呼ぶ．等号を許して\(\geq0\)なら半正定値である．
+
+\begin{intuitionbox}[重み付き距離]
+\(\bm W=\diag(w_1,\ldots,w_d)\)なら，成分\(j\)の差を\(w_j\)倍重く評価する．
+終端descriptorの各成分の尺度が違うとき，正規化や\(\bm W\)によって
+「何を同じ形状とみなすか」を揃える必要がある．
+\end{intuitionbox}
+
+\subsection{固有値が表す伸びやすい方向}
+
+対称行列\(\bm A\)に対し
+\begin{equation}
+  \bm A\bm v=\lambda\bm v
+\end{equation}
+を満たす\(\bm v\neq\bm0\)を固有ベクトル，\(\lambda\)を固有値と呼ぶ．
+行列を掛けても方向が変わらず，長さだけ\(\lambda\)倍になる特別な方向である．
+最大固有値\(\lambda_{\max}(\bm A)\)は，\(\bm A\)が最も大きく伸ばす方向の強さを表す．
+多出力GPの信頼楕円を一つの半径に変えるときに再び用いる．
+
+\section{確率論の最小限の基礎}
+\label{sec:probability}
+
+\subsection{確率変数とは何か}
+
+確率変数は，「偶然によって値が決まる数」を表す記号である．
+例えば公正なコインについて
+\begin{equation}
+  X=
+  \begin{cases}
+    -1,&\text{裏，確率 }1/2,\\
+    +1,&\text{表，確率 }1/2
+  \end{cases}
+\end{equation}
+と定義できる．大文字\(X\)は値がまだ決まっていない確率変数，
+小文字\(x\)は実際に得た値を表すことが多い．
+
+離散確率変数では，それぞれの値を取る確率を確率質量関数\(p_X(x)=\Pp(X=x)\)で表す．
+連続確率変数では確率密度関数\(p_X(x)\)を使い，区間の確率を
+\begin{equation}
+  \Pp(a\leq X\leq b)=\int_a^b p_X(x)\,dx
+\end{equation}
+で表す．連続変数では一点だけの確率\(\Pp(X=x)\)は0であり，
+密度の高さ\(p_X(x)\)そのものは確率ではない．面積が確率である．
+
+\subsection{期待値：分布の平均位置}
+
+離散確率変数の期待値は
+\begin{equation}
+  \E[X]=\sum_x x\,\Pp(X=x),
+  \label{eq:discrete-expectation}
+\end{equation}
+連続確率変数では
+\begin{equation}
+  \E[X]=\int_{-\infty}^{\infty}x\,p_X(x)\,dx
+  \label{eq:continuous-expectation}
+\end{equation}
+である．同じ試行を多数回行ったときの平均値と考えればよい．
+一般の関数\(g\)についても
+\begin{equation}
+  \E[g(X)]
+  =\int g(x)p_X(x)\,dx
+\end{equation}
+と定義する．
+
+先ほどのコインでは
+\begin{equation}
+  \E[X]=(-1)\frac12+(+1)\frac12=0
+\end{equation}
+である．ただし，実際の一回の試行で0が出るわけではない．期待値は分布の中心を表す要約量である．
+
+\subsection{分散と標準偏差：どの程度ばらつくか}
+
+平均\(\mu_X=\E[X]\)からのずれは\(X-\mu_X\)である．
+ずれをそのまま平均すると正負が相殺して0になるため，二乗してから平均する．
+\begin{definitionbox}[分散と標準偏差]
+\begin{align}
+  \Var[X]
+  &=\E\left[(X-\E[X])^2\right]
+  =\sigma_X^2,
+  \label{eq:variance-definition}\\
+  \operatorname{SD}[X]
+  &=\sqrt{\Var[X]}=\sigma_X.
+  \label{eq:sd-definition}
+\end{align}
+分散は平均からの二乗距離の期待値，標準偏差はその平方根である．
+\end{definitionbox}
+
+分散は次の形にも変形できる．
+\begin{align}
+  \Var[X]
+  &=\E[X^2-2X\mu_X+\mu_X^2]\notag\\
+  &=\E[X^2]-2\mu_X\E[X]+\mu_X^2\notag\\
+  &=\E[X^2]-\mu_X^2.
+  \label{eq:variance-second-moment}
+\end{align}
+
+\begin{intuitionbox}[なぜUCBでは分散でなく標準偏差か]
+\(X\)の単位がmmなら，分散\(\sigma_X^2\)の単位は\(\mathrm{mm}^2\)，
+標準偏差\(\sigma_X\)はmmである．予測平均\(\mu_X\)に不確実性を足すUCB
+\begin{equation*}
+  \mu_X+\kappa\sigma_X
+\end{equation*}
+では単位が揃う．\(\mu_X+\kappa\sigma_X^2\)では単位が合わない．
+\end{intuitionbox}
+
+先ほどの\(X\in\{-1,+1\}\)では
+\begin{equation}
+  \Var[X]
+  =\frac12(-1-0)^2+\frac12(1-0)^2=1,
+  \qquad \operatorname{SD}[X]=1.
+\end{equation}
+
+\subsection{共分散：二つの量が一緒にどう動くか}
+
+二つの確率変数\(X,Y\)について，平均からのずれを掛けて平均する．
+\begin{definitionbox}[共分散]
+\begin{align}
+  \Cov[X,Y]
+  &=\E\left[(X-\E[X])(Y-\E[Y])\right]
+  \label{eq:covariance-definition}\\
+  &=\E[XY]-\E[X]\E[Y].
+\end{align}
+\end{definitionbox}
+
+\begin{itemize}
+  \item \(X\)が平均より大きいとき\(Y\)も大きいことが多ければ，共分散は正になる．
+  \item 一方が大きいとき他方が小さいことが多ければ，共分散は負になる．
+  \item 線形な連動がなければ0に近づく．ただし共分散0は，一般には独立を意味しない．
+\end{itemize}
+
+共分散は尺度に依存する．そこで無次元化した相関係数
+\begin{equation}
+  \Corr[X,Y]
+  =\frac{\Cov[X,Y]}{\sigma_X\sigma_Y}
+  \in[-1,1]
+  \label{eq:correlation}
+\end{equation}
+を用いることがある．ただし\(\sigma_X>0,\sigma_Y>0\)を仮定する．
+\(\Corr=1\)は完全に同方向，\(-1\)は完全に逆方向の線形関係を表す．
+
+\subsection{共分散行列：複数の量をまとめる}
+
+確率ベクトル
+\begin{equation}
+  \bm X=[X_1,\ldots,X_p]^\T
+\end{equation}
+の平均ベクトルと共分散行列を
+\begin{align}
+  \bm\mu&=\E[\bm X],\\
+  \bm\Sigma
+  &=\Cov[\bm X]
+  =\E[(\bm X-\bm\mu)(\bm X-\bm\mu)^\T]
+  \label{eq:covariance-matrix}
+\end{align}
+と定義する．成分表示すると
+\begin{equation}
+  \bm\Sigma=
+  \begin{bmatrix}
+    \Var[X_1]&\Cov[X_1,X_2]&\cdots\\
+    \Cov[X_2,X_1]&\Var[X_2]&\cdots\\
+    \vdots&\vdots&\ddots
+  \end{bmatrix}.
+  \label{eq:covariance-matrix-elements}
+\end{equation}
+
+\begin{description}
+  \item[対角成分] \(\Sigma_{jj}=\Var[X_j]\)は各成分自身の分散である．
+  \item[非対角成分] \(\Sigma_{jk}=\Cov[X_j,X_k]\)は異なる成分の連動である．
+\end{description}
+
+共分散行列は必ず対称半正定値である．任意の\(\bm c\)について
+\begin{align}
+  \bm c^\T\bm\Sigma\bm c
+  &=\Var[\bm c^\T\bm X]\geq0
+  \label{eq:covariance-psd}
+\end{align}
+だからである．これは後で，カーネル行列が半正定値でなければならない理由と一致する．
+
+\subsection{同じ分散でも共分散が違えば形が違う}
+
+次の二つの共分散行列を考える．
+\begin{equation}
+  \bm\Sigma_+
+  =\begin{bmatrix}1&0.9\\0.9&1\end{bmatrix},
+  \qquad
+  \bm\Sigma_-
+  =\begin{bmatrix}1&-0.9\\-0.9&1\end{bmatrix}.
+  \label{eq:positive-negative-covariance}
+\end{equation}
+どちらも対角成分は\((1,1)\)なので，\(X_1,X_2\)を別々に見た分散は同じである．
+しかし，\(\bm\Sigma_+\)は\((1,1)\)方向，\(\bm\Sigma_-\)は\((1,-1)\)方向に広がる．
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=1.0]
+  \begin{scope}[xshift=-3.3cm]
+    \draw[->] (-2.1,0)--(2.1,0) node[right] {$X_1$};
+    \draw[->] (0,-2.1)--(0,2.1) node[above] {$X_2$};
+    \draw[blue!70!black,thick,rotate=45] (0,0) ellipse (1.85cm and 0.43cm);
+    \draw[blue!35,fill=blue!12,opacity=.55,rotate=45] (0,0) ellipse (1.85cm and 0.43cm);
+    \node at (0,-2.55) {$\bm\Sigma_+$：同方向に連動};
+  \end{scope}
+  \begin{scope}[xshift=3.3cm]
+    \draw[->] (-2.1,0)--(2.1,0) node[right] {$X_1$};
+    \draw[->] (0,-2.1)--(0,2.1) node[above] {$X_2$};
+    \draw[red!70!black,thick,rotate=-45] (0,0) ellipse (1.85cm and 0.43cm);
+    \draw[red!35,fill=red!12,opacity=.55,rotate=-45] (0,0) ellipse (1.85cm and 0.43cm);
+    \node at (0,-2.55) {$\bm\Sigma_-$：逆方向に連動};
+  \end{scope}
+\end{tikzpicture}
+\caption{対角分散が同じでも，非対角共分散により不確実性楕円の向きは変わる．}
+\label{fig:covariance-ellipses}
+\end{figure}
+
+\begin{checkpointbox}
+\begin{enumerate}
+  \item 分散と標準偏差では単位がどう違うか．
+  \item 共分散行列の対角成分と非対角成分は何を表すか．
+  \item \(\bm\Sigma_+\)と\(\bm\Sigma_-\)は各成分の分散が同じなのに，なぜ別の情報を持つか．
+\end{enumerate}
+\textbf{答え：} 分散は元の単位の二乗，標準偏差は元と同じ単位である．
+対角は各成分の分散，非対角は成分間の共分散である．
+非対角成分が不確実性の連動方向を決めるため，二つの楕円の向きが異なる．
+\end{checkpointbox}
+
+\section{正規分布と条件付き分布}
+\label{sec:gaussian-conditioning}
+
+\subsection{一変量正規分布}
+
+平均\(\mu\)，分散\(\sigma^2\)の正規分布を
+\begin{equation}
+  X\sim\N(\mu,\sigma^2)
+\end{equation}
+と書く．確率密度は
+\begin{equation}
+  p(x)
+  =\frac{1}{\sqrt{2\pi\sigma^2}}
+  \exp\left[-\frac{(x-\mu)^2}{2\sigma^2}\right]
+  \label{eq:univariate-normal-density}
+\end{equation}
+である．\(\mu\)が中心，\(\sigma\)が横方向の広がりを決める．
+
+標準正規分布\(Z\sim\N(0,1)\)の密度と累積分布関数を
+\begin{align}
+  \phi(z)&=\frac{1}{\sqrt{2\pi}}e^{-z^2/2},\\
+  \Phi(z)&=\Pp(Z\leq z)=\int_{-\infty}^{z}\phi(u)\,du
+  \label{eq:phi-Phi}
+\end{align}
+と書く．任意の正規変数は
+\begin{equation}
+  Z=\frac{X-\mu}{\sigma}
+\end{equation}
+によって標準化できる．PIとEIの導出ではこの変換を繰り返し使う．
+
+\subsection{多変量正規分布}
+
+確率ベクトル\(\bm X\in\R^p\)が平均\(\bm\mu\)，共分散\(\bm\Sigma\)の
+多変量正規分布に従うことを
+\begin{equation}
+  \bm X\sim\N(\bm\mu,\bm\Sigma)
+\end{equation}
+と書く．\(\bm\Sigma\)が正定値なら密度は
+\begin{equation}
+  p(\bm x)
+  =\frac{1}{(2\pi)^{p/2}|\bm\Sigma|^{1/2}}
+  \exp\left[-\frac12
+  (\bm x-\bm\mu)^\T\bm\Sigma^{-1}(\bm x-\bm\mu)
+  \right].
+  \label{eq:multivariate-normal-density}
+\end{equation}
+指数部が一定の点を結ぶと楕円または楕円体になる．
+
+\begin{intuitionbox}[正規分布が便利な理由]
+正規分布に従う量の線形和は再び正規分布になる．また，多変量正規分布の一部を観測して
+条件を付けても，残りは再び正規分布になる．この閉じた性質により，
+GPRでは積分を数値近似せずに予測平均と分散を解析的に計算できる．
+\end{intuitionbox}
+
+\subsection{条件付き確率とBayesの公式}
+
+事象\(B\)が起きたと分かった後の事象\(A\)の確率を
+\begin{equation}
+  \Pp(A\mid B)
+  =\frac{\Pp(A\cap B)}{\Pp(B)}
+  \label{eq:conditional-probability}
+\end{equation}
+と定義する．積の順序を入れ替えるとBayesの公式
+\begin{equation}
+  \Pp(A\mid B)
+  =\frac{\Pp(B\mid A)\Pp(A)}{\Pp(B)}
+  \label{eq:bayes-rule}
+\end{equation}
+を得る．
+
+回帰では，未知関数について観測前に持つ考えを事前分布，観測データの生じやすさを尤度，
+観測後に更新された考えを事後分布と呼ぶ．記号では
+\begin{equation}
+  p(f\mid\D)
+  =\frac{p(\D\mid f)p(f)}{p(\D)}
+  \propto p(\D\mid f)p(f).
+  \label{eq:bayes-function}
+\end{equation}
+分母\(p(\D)\)は，事後分布全体の積分が1になるように正規化する．
+
+\subsection{二変量正規分布の条件付け}
+
+最も簡単な例として
+\begin{equation}
+  \begin{bmatrix}X\\Y\end{bmatrix}
+  \sim\N\left(
+  \begin{bmatrix}0\\0\end{bmatrix},
+  \begin{bmatrix}1&\rho\\\rho&1\end{bmatrix}
+  \right)
+  \label{eq:bivariate-normal}
+\end{equation}
+を考える．\(X=x\)を観測すると
+\begin{equation}
+  Y\mid X=x\sim\N(\rho x,1-\rho^2).
+  \label{eq:bivariate-conditional}
+\end{equation}
+\(\rho=0\)なら\(X\)を見ても\(Y\)の平均・分散は変わらない．
+\(|\rho|\)が1に近いほど，\(X\)から\(Y\)を強く推定でき，条件付き分散\(1-\rho^2\)は小さくなる．
+
+\subsection{ブロック行列による条件付き正規分布の導出}
+\label{sec:conditional-gaussian-derivation}
+
+二つの確率ベクトルをまとめて
+\begin{equation}
+  \begin{bmatrix}\bm a\\\bm b\end{bmatrix}
+  \sim\N\left(
+  \begin{bmatrix}\bm\mu_a\\\bm\mu_b\end{bmatrix},
+  \begin{bmatrix}
+    \bm\Sigma_{aa}&\bm\Sigma_{ab}\\
+    \bm\Sigma_{ba}&\bm\Sigma_{bb}
+  \end{bmatrix}
+  \right)
+  \label{eq:block-gaussian}
+\end{equation}
+とする．\(\bm a\)を観測したときの\(\bm b\)を知りたい．以下では
+\(\bm\Sigma_{aa}\)が可逆であると仮定する．
+
+まず，\(\bm a\)で線形に説明できる部分の係数を
+\begin{equation}
+  \bm C=\bm\Sigma_{ba}\bm\Sigma_{aa}^{-1}
+\end{equation}
+と置き，説明できない残差を
+\begin{equation}
+  \bm r
+  =\bm b-\bm\mu_b-\bm C(\bm a-\bm\mu_a)
+  \label{eq:conditional-residual}
+\end{equation}
+と定義する．残差と\(\bm a\)の共分散は
+\begin{align}
+  \Cov[\bm r,\bm a]
+  &=\bm\Sigma_{ba}-\bm C\bm\Sigma_{aa}\notag\\
+  &=\bm\Sigma_{ba}
+  -\bm\Sigma_{ba}\bm\Sigma_{aa}^{-1}\bm\Sigma_{aa}
+  =\bm0.
+  \label{eq:residual-uncorrelated}
+\end{align}
+一般には無相関でも独立とは限らないが，\(\bm r\)と\(\bm a\)は同時正規なので，
+無相関なら独立である．したがって\(\bm a\)を観測しても\(\bm r\)の分布は変わらない．
+
+残差の平均は0，共分散は
+\begin{align}
+  \Cov[\bm r]
+  &=\Cov[\bm b-\bm C\bm a]\notag\\
+  &=\bm\Sigma_{bb}
+  -\bm C\bm\Sigma_{ab}
+  -\bm\Sigma_{ba}\bm C^\T
+  +\bm C\bm\Sigma_{aa}\bm C^\T\notag\\
+  &=\bm\Sigma_{bb}
+  -\bm\Sigma_{ba}\bm\Sigma_{aa}^{-1}\bm\Sigma_{ab}.
+  \label{eq:conditional-residual-covariance}
+\end{align}
+式\eqref{eq:conditional-residual}を\(\bm b\)について解けば，条件付き分布は
+\begin{equation}
+  \boxed{
+  \bm b\mid\bm a
+  \sim\N\left(
+  \bm\mu_b+
+  \bm\Sigma_{ba}\bm\Sigma_{aa}^{-1}(\bm a-\bm\mu_a),
+  \;
+  \bm\Sigma_{bb}
+  -\bm\Sigma_{ba}\bm\Sigma_{aa}^{-1}\bm\Sigma_{ab}
+  \right).}
+  \label{eq:conditional-gaussian}
+\end{equation}
+
+\begin{intuitionbox}[条件付き式の二つの項]
+条件付き平均は「元の平均」+「観測値が平均から外れた量」\(\times\)「共分散による伝達係数」である．
+条件付き共分散は「元の不確実性」-「観測との相関によって説明できた不確実性」である．
+後で\(\bm a\)を訓練データ，\(\bm b\)を未知点での関数値と読み替えるだけで，GPRの式が得られる．
+\end{intuitionbox}
+
+\begin{checkpointbox}
+\begin{enumerate}
+  \item \(Y\mid X=x\sim\N(\rho x,1-\rho^2)\)で，\(|\rho|\)が大きいほど分散が減るのはなぜか．
+  \item 式\eqref{eq:conditional-gaussian}の平均と共分散のうち，実際に観測した値\(\bm a\)を含むのはどちらか．
+\end{enumerate}
+\textbf{答え：} 相関が強いほど\(X\)が\(Y\)の変化を説明するためである．
+観測値を含むのは平均であり，カーネル等を固定すれば条件付き共分散は観測位置と共分散構造で決まる．
+\end{checkpointbox}
+
+\section{線形回帰からカーネルとガウス過程へ}
+\label{sec:kernel-gp}
+
+\subsection{Bayes線形回帰から始める}
+
+まず，入力\(\bm x\)から特徴ベクトル\(\bm\phi(\bm x)\in\R^m\)を作り，
+\begin{equation}
+  f(\bm x)=\bm\phi(\bm x)^\T\bm w
+  \label{eq:linear-feature-model}
+\end{equation}
+とする線形モデルを考える．「線形」とは重み\(\bm w\)に関して線形という意味であり，
+\(\bm\phi(\bm x)=[1,x,x^2,\sin x]^\T\)のような非線形特徴を使ってよい．
+
+重みを一つに固定せず，事前分布
+\begin{equation}
+  \bm w\sim\N(\bm0,\bm\Sigma_w)
+  \label{eq:weight-prior}
+\end{equation}
+に従う確率変数とする．すると\(f(\bm x)\)も確率変数になる．平均は
+\begin{equation}
+  \E[f(\bm x)]
+  =\bm\phi(\bm x)^\T\E[\bm w]=0
+\end{equation}
+であり，二つの入力での関数値の共分散は
+\begin{align}
+  \Cov[f(\bm x),f(\bm x')]
+  &=\E\left[
+    \bm\phi(\bm x)^\T\bm w\bm w^\T\bm\phi(\bm x')
+  \right]\notag\\
+  &=\bm\phi(\bm x)^\T\bm\Sigma_w\bm\phi(\bm x').
+  \label{eq:feature-kernel}
+\end{align}
+この右辺を\(k(\bm x,\bm x')\)と名付ける．これがカーネルの入口である．
+
+\subsection{カーネルの本来の意味}
+
+\begin{definitionbox}[共分散カーネル]
+ガウス過程で使うカーネルは
+\begin{equation}
+  k(\bm x,\bm x')
+  =\Cov[f(\bm x),f(\bm x')]
+  \label{eq:kernel-as-covariance}
+\end{equation}
+であり，「入力\(\bm x\)と\(\bm x'\)での未知関数値が，事前にどれだけ連動すると考えるか」を定める規則である．
+\end{definitionbox}
+
+「カーネルは入力の類似度」と説明されることが多い．これは直感としては便利だが，正確には
+\emph{入力の関係を関数値間の共分散へ変換する規則}である．
+近い入力で関数値も近いと仮定するカーネルもあれば，周期性や線形傾向を仮定するカーネルもある．
+
+訓練入力\(\bm x_1,\ldots,\bm x_n\)に対して
+\begin{equation}
+  K_{ij}=k(\bm x_i,\bm x_j)
+  \label{eq:gram-matrix}
+\end{equation}
+で作る\(\bm K\)をGram行列またはカーネル行列と呼ぶ．対角成分
+\begin{equation}
+  K_{ii}=k(\bm x_i,\bm x_i)=\Var[f(\bm x_i)]
+\end{equation}
+は各点での事前分散，非対角成分は異なる入力点間の事前共分散である．
+
+\subsection{どんな関数でもカーネルにできるわけではない}
+
+有効な共分散カーネルは対称であり，任意の有限入力集合と任意の係数\(\bm c\)について
+\begin{equation}
+  \bm c^\T\bm K\bm c\geq0
+  \label{eq:kernel-psd-condition}
+\end{equation}
+を満たさなければならない．なぜなら
+\begin{equation}
+  \bm c^\T\bm K\bm c
+  =\Var\left[\sum_{i=1}^n c_i f(\bm x_i)\right]
+\end{equation}
+であり，分散は負になれないからである．
+
+式\eqref{eq:feature-kernel}のように
+\begin{equation}
+  k(\bm x,\bm x')
+  =\bm\phi(\bm x)^\T\bm\Sigma_w\bm\phi(\bm x')
+\end{equation}
+と書けるものはこの条件を満たす．カーネルを用いると，特徴\(\bm\phi\)が非常に高次元，
+場合によっては無限次元でも，内積\(k(\bm x,\bm x')\)だけを直接計算できる．
+
+\subsection{ガウス過程の定義}
+
+\begin{definitionbox}[ガウス過程]
+未知関数\(f\)が平均関数\(m\)とカーネル\(k\)をもつガウス過程に従うことを
+\begin{equation}
+  f(\bm x)\sim\GP\bigl(m(\bm x),k(\bm x,\bm x')\bigr)
+  \label{eq:gp-definition-symbol}
+\end{equation}
+と書く．これは，任意の有限個の入力\(\bm x_1,\ldots,\bm x_n\)を選んだとき
+\begin{equation}
+  \begin{bmatrix}
+    f(\bm x_1)\\\vdots\\f(\bm x_n)
+  \end{bmatrix}
+  \sim\N\left(
+  \begin{bmatrix}
+    m(\bm x_1)\\\vdots\\m(\bm x_n)
+  \end{bmatrix},
+  \bm K
+  \right),
+  \qquad K_{ij}=k(\bm x_i,\bm x_j)
+  \label{eq:gp-finite-definition}
+\end{equation}
+となることを意味する．
+\end{definitionbox}
+
+ガウス過程は「各入力で独立な正規乱数を出すモデル」ではない．
+カーネルが異なる入力での関数値を相関させるため，一本の滑らかな曲線や周期曲線として標本が生成される．
+観測前には多数のあり得る関数へ確率を割り当て，観測後にはデータに合わない関数の確率を下げる．
+
+\begin{intuitionbox}[有限次元の正規分布から関数の分布へ]
+多変量正規分布は有限個の数\((X_1,\ldots,X_n)\)の同時分布である．
+ガウス過程は，どの有限個の入力点を抜き出しても多変量正規になるように，
+無限個の関数値を整合的につないだものと考えればよい．
+「正規分布する一本の関数」ではなく，「候補となる関数全体に置いた分布」である．
+\end{intuitionbox}
+
+\subsection{代表的なカーネル}
+\label{sec:kernel-examples}
+
+以下で\(r=\|\bm x-\bm x'\|_2\)とする．
+
+\paragraph{定数カーネル}
+\begin{equation}
+  k(\bm x,\bm x')=\sigma_c^2.
+\end{equation}
+すべての入力で同じ値を共有する関数を表す．
+
+\paragraph{線形カーネル}
+\begin{equation}
+  k(\bm x,\bm x')
+  =\sigma_b^2+\sigma_v^2(\bm x-\bm c)^\T(\bm x'-\bm c).
+\end{equation}
+線形傾向をもつ関数に対応する．
+
+\paragraph{RBF（二乗指数）カーネル}
+\begin{equation}
+  k_{\mathrm{RBF}}(\bm x,\bm x')
+  =\sigma_f^2
+  \exp\left(-\frac{r^2}{2\ell^2}\right).
+  \label{eq:rbf-kernel}
+\end{equation}
+\(\sigma_f^2\)は関数値の変動規模，\(\ell\)はlength scaleである．
+\(r\ll\ell\)なら共分散は大きく，\(r\gg\ell\)ならほぼ0になる．
+RBFから生成される関数は非常に滑らかで，何回でも微分可能である．
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=.78\textwidth,height=6.2cm,
+  xlabel={$r=\|\bm x-\bm x'\|$},
+  ylabel={$k(r)/\sigma_f^2$},
+  xmin=0,xmax=4,ymin=0,ymax=1.05,
+  grid=major,legend style={at={(.98,.98)},anchor=north east},
+  samples=160]
+  \addplot[blue,thick] {exp(-x^2/(2*0.5^2))};
+  \addlegendentry{$\ell=0.5$}
+  \addplot[orange!85!black,thick] {exp(-x^2/(2*1.0^2))};
+  \addlegendentry{$\ell=1$}
+  \addplot[green!55!black,thick] {exp(-x^2/(2*2.0^2))};
+  \addlegendentry{$\ell=2$}
+\end{axis}
+\end{tikzpicture}
+\caption{RBFカーネルのlength scale．\(\ell\)が大きいほど遠い入力間でも関数値を強く相関させる．}
+\label{fig:rbf-lengthscale}
+\end{figure}
+
+\paragraph{Mat\'{e}rnカーネル}
+関数の滑らかさを有限に調整できる．代表例は
+\begin{align}
+  k_{1/2}(r)
+  &=\sigma_f^2\exp\left(-\frac{r}{\ell}\right),\\
+  k_{3/2}(r)
+  &=\sigma_f^2\left(1+\frac{\sqrt3r}{\ell}\right)
+  \exp\left(-\frac{\sqrt3r}{\ell}\right),
+  \label{eq:matern32}\\
+  k_{5/2}(r)
+  &=\sigma_f^2\left(1+\frac{\sqrt5r}{\ell}
+  +\frac{5r^2}{3\ell^2}\right)
+  \exp\left(-\frac{\sqrt5r}{\ell}\right).
+\end{align}
+\(\nu\)が小さいほど粗い関数を許す．basin境界付近で急変する終端写像には，
+RBFよりMat\'{e}rn \(3/2\)などが現実的な場合がある．ただしMat\'{e}rnも不連続そのものを自動的に表現するわけではない．
+
+\paragraph{周期カーネル}
+\begin{equation}
+  k_{\mathrm{per}}(x,x')
+  =\sigma_f^2\exp\left[
+  -\frac{2\sin^2(\pi|x-x'|/p)}{\ell^2}
+  \right].
+  \label{eq:periodic-kernel}
+\end{equation}
+周期\(p\)の現象を表す．折角の\(-\pi\)と\(+\pi\)を近い状態と扱いたいときに関係する．
+
+\paragraph{ARD（Automatic Relevance Determination）}
+入力次元ごとにlength scaleを持たせる．
+\begin{equation}
+  k_{\mathrm{ARD}}(\bm x,\bm x')
+  =\sigma_f^2\exp\left[-\frac12
+  \sum_{j=1}^d\frac{(x_j-x_j')^2}{\ell_j^2}
+  \right].
+  \label{eq:ard-kernel}
+\end{equation}
+\(\ell_j\)が大きければ，その入力方向へ関数がゆっくり変化すると推定される．
+ただし，小標本で30個の\(\ell_j\)を同時に学習すると不安定になり得る．
+
+\subsection{カーネルの和と積}
+
+有効なカーネル\(k_1,k_2\)に対し，\(k_1+k_2\)と\(k_1k_2\)も有効である．
+和は複数の変動成分を足し，積は両方の条件が近いときだけ高い共分散を与える．
+状態\(\bm s\)と摂動\(\bm a\)を分けるなら
+\begin{equation}
+  k\bigl((\bm s,\bm a),(\bm s',\bm a')\bigr)
+  =k_s(\bm s,\bm s')k_a(\bm a,\bm a')
+  \label{eq:state-action-product-kernel}
+\end{equation}
+と設計できる．これは「状態も摂動も似ているときに終端が似る」という仮定である．
+
+\begin{cautionbox}[length scaleは入力の尺度に依存する]
+節点座標がm，角度がrad，節点変位がmmのまま同じ距離に入ると，数値の大きい成分が支配する．
+入力成分を物理的に妥当な尺度で正規化し，状態blockと摂動blockを別々に標準化してから
+length scaleを解釈する必要がある．
+\end{cautionbox}
+
+\begin{checkpointbox}
+\begin{enumerate}
+  \item カーネル\(k(\bm x,\bm x')\)は，何と何の共分散か．
+  \item カーネル行列が半正定値でなければならないのはなぜか．
+  \item RBFの\(\ell\)を大きくすると，未知関数にどのような事前仮定を置くことになるか．
+\end{enumerate}
+\textbf{答え：} \(f(\bm x)\)と\(f(\bm x')\)の共分散である．
+任意の関数値線形和の分散を負にしないためである．
+\(\ell\)が大きいほど，離れた入力でも似た関数値を持つ，ゆっくり変化する関数を仮定する．
+\end{checkpointbox}
+
+\section{ガウス過程回帰の導出}
+\label{sec:gpr-derivation}
+
+本節の導出は，標準的なGPRの定式化\citep{rasmussen2006gpml}に沿う．
+
+\subsection{観測モデル}
+
+訓練データを
+\begin{equation}
+  \D=\{(\bm x_i,y_i)\}_{i=1}^n
+\end{equation}
+とする．真の潜在関数値に独立なGaussian noiseが加わると仮定する．
+\begin{align}
+  y_i&=f(\bm x_i)+\varepsilon_i,\\
+  \varepsilon_i&\sim\N(0,\sigma_n^2).
+  \label{eq:gpr-observation-model}
+\end{align}
+入力を行列\(\bm X=[\bm x_1^\T;\ldots;\bm x_n^\T]\)，観測を
+\(\bm y=[y_1,\ldots,y_n]^\T\)と書く．
+
+事前分布を
+\begin{equation}
+  f\sim\GP(m,k)
+\end{equation}
+とする．訓練点での平均ベクトルとカーネル行列を
+\begin{align}
+  \bm m_X&=[m(\bm x_1),\ldots,m(\bm x_n)]^\T,\\
+  (\bm K_{XX})_{ij}&=k(\bm x_i,\bm x_j)
+\end{align}
+とすれば，noiseの独立性から
+\begin{equation}
+  \bm y\sim\N(\bm m_X,\bm K_{XX}+\sigma_n^2\I).
+  \label{eq:y-prior}
+\end{equation}
+以下では\(\bm K_y=\bm K_{XX}+\sigma_n^2\I\)と略記する．
+
+\subsection{訓練値と未知点を同じ正規分布へ入れる}
+
+予測したいtest inputを\(\bm x_*\)，そこでの潜在関数値を\(f_*=f(\bm x_*)\)とする．
+訓練点とtest pointの共分散ベクトル，test point自身の事前分散を
+\begin{align}
+  \bm k_{X*}
+  &=\begin{bmatrix}
+  k(\bm x_1,\bm x_*)\\\vdots\\k(\bm x_n,\bm x_*)
+  \end{bmatrix},\\
+  k_{**}&=k(\bm x_*,\bm x_*)
+\end{align}
+とする．GPの定義から
+\begin{equation}
+  \begin{bmatrix}\bm y\\f_*\end{bmatrix}
+  \sim\N\left(
+  \begin{bmatrix}\bm m_X\\m_*\end{bmatrix},
+  \begin{bmatrix}
+    \bm K_y&\bm k_{X*}\\
+    \bm k_{X*}^\T&k_{**}
+  \end{bmatrix}
+  \right),
+  \qquad m_*=m(\bm x_*).
+  \label{eq:gpr-joint-prior}
+\end{equation}
+
+\subsection{条件付き正規分布を代入する}
+
+式\eqref{eq:conditional-gaussian}で
+\begin{equation*}
+  \bm a=\bm y,
+  \quad \bm b=f_*,
+  \quad \bm\Sigma_{aa}=\bm K_y,
+  \quad \bm\Sigma_{ba}=\bm k_{X*}^\T
+\end{equation*}
+と読み替える．ただちに
+\begin{equation}
+  \boxed{
+  \mu_*(\bm x_*)
+  =m_*+\bm k_{X*}^\T\bm K_y^{-1}(\bm y-\bm m_X)}
+  \label{eq:gpr-posterior-mean}
+\end{equation}
+と
+\begin{equation}
+  \boxed{
+  \sigma_*^2(\bm x_*)
+  =k_{**}-\bm k_{X*}^\T\bm K_y^{-1}\bm k_{X*}}
+  \label{eq:gpr-posterior-variance}
+\end{equation}
+を得る．したがって
+\begin{equation}
+  f_*\mid\bm X,\bm y,\bm x_*
+  \sim\N(\mu_*,\sigma_*^2).
+  \label{eq:gpr-posterior-scalar}
+\end{equation}
+
+\begin{intuitionbox}[事後平均]
+式\eqref{eq:gpr-posterior-mean}は
+\begin{equation*}
+  \text{事前平均}
+  +\text{test pointと訓練点の共分散}
+  \times\text{訓練データの残差}
+\end{equation*}
+である．\(\bm x_*\)と強く相関する訓練点の観測値が，予測平均を大きく修正する．
+\end{intuitionbox}
+
+\begin{intuitionbox}[事後分散]
+式\eqref{eq:gpr-posterior-variance}は
+\begin{equation*}
+  \text{観測前の分散}-\text{訓練データから説明できた分散}
+\end{equation*}
+である．固定した入力点，カーネル，ハイパーパラメータのもとでは，
+\(\sigma_*^2\)は観測値\(\bm y\)そのものを含まない．
+「どこを観測したか」によって不確実性が決まり，「そこで何を観測したか」によって平均が決まる．
+ハイパーパラメータをデータから再学習する実装では，\(\bm y\)がハイパーパラメータを通じて
+分散へ間接的に影響することはある．
+\end{intuitionbox}
+
+\subsection{複数test pointを同時に予測する}
+
+test inputsを\(\bm X_*=[\bm x_{*1}^\T;\ldots;\bm x_{*q}^\T]\)とし，
+\(\bm f_*=[f(\bm x_{*1}),\ldots,f(\bm x_{*q})]^\T\)とする．このとき
+\begin{align}
+  \bm\mu_*
+  &=\bm m_*+\bm K_{*X}\bm K_y^{-1}(\bm y-\bm m_X),
+  \label{eq:gpr-posterior-mean-multiple}\\
+  \bm\Sigma_*
+  &=\bm K_{**}-\bm K_{*X}\bm K_y^{-1}\bm K_{X*}.
+  \label{eq:gpr-posterior-covariance-multiple}
+\end{align}
+\(\bm\Sigma_*\in\R^{q\times q}\)の対角は各test pointの予測分散，
+非対角は異なるtest point間の事後共分散である．
+Thompson samplingやbatch獲得関数では，この非対角成分を保って同時に標本を生成することが重要である．
+
+\subsection{二点だけの手計算例}
+\label{sec:gpr-numerical-example}
+
+\begin{equation}
+  X=(0,1),\qquad \bm y=(0,1)^\T
+\end{equation}
+とし，RBFカーネルで\(\ell=1,\sigma_f=1,\sigma_n=0,m=0\)とする．
+\(x_*=0.5\)を予測する．
+\begin{equation}
+  a=e^{-1/2}\approx0.60653,
+  \qquad b=e^{-1/8}\approx0.88250
+\end{equation}
+と置けば
+\begin{equation}
+  \bm K=
+  \begin{bmatrix}1&a\\a&1\end{bmatrix},
+  \qquad
+  \bm k_*=
+  \begin{bmatrix}b\\b\end{bmatrix},
+  \qquad k_{**}=1.
+\end{equation}
+逆行列は
+\begin{equation}
+  \bm K^{-1}
+  =\frac{1}{1-a^2}
+  \begin{bmatrix}1&-a\\-a&1\end{bmatrix}.
+\end{equation}
+事後平均は
+\begin{align}
+  \mu_*
+  &=\bm k_*^\T\bm K^{-1}\bm y
+  =\frac{b}{1+a}
+  \approx0.5493,
+\end{align}
+事後分散は
+\begin{align}
+  \sigma_*^2
+  &=1-\bm k_*^\T\bm K^{-1}\bm k_*\notag\\
+  &=1-\frac{2b^2}{1+a}
+  \approx0.03046.
+  \label{eq:gpr-numeric-result}
+\end{align}
+標準偏差は\(\sigma_*\approx0.1745\)である．二つの訓練点に挟まれているため，
+事前分散1から大きく減った．
+
+\subsection{訓練点付近と遠方で何が起こるか}
+
+noiseなしで\(\bm x_*\)が訓練点と完全に一致し，\(\bm K\)が正則なら，
+事後平均は観測値を補間し，潜在関数の事後分散は0になる．
+一方，stationary kernelで\(\bm x_*\)が全訓練点から十分遠ければ
+\(\bm k_{X*}\to\bm0\)となるため
+\begin{align}
+  \mu_*&\to m_*,\\
+  \sigma_*^2&\to k_{**}.
+\end{align}
+つまり，データがない遠方では事前平均と事前分散へ戻る．
+
+\begin{cautionbox}[遠方の予測平均は「未知形状の予測」ではない]
+事前平均を0にすると，遠方の予測平均は0へ戻る．0がarchiveから遠い場合，
+「平均がarchiveから遠い」というscoreは，データのない点を架空の有望形状として評価し得る．
+遠方では平均より不確実性が支配的であることを区別し，posterior sampleやflat到達確率を併用する必要がある．
+\end{cautionbox}
+
+\subsection{潜在関数の分散と新しい観測値の分散}
+
+式\eqref{eq:gpr-posterior-variance}はnoiseを除いた潜在関数\(f_*\)の分散である．
+新しい観測\(y_*=f_*+\varepsilon_*\)の予測分散は
+\begin{equation}
+  \Var[y_*\mid\D]
+  =\sigma_*^2+\sigma_n^2.
+  \label{eq:observation-predictive-variance}
+\end{equation}
+
+\begin{applicationbox}
+「その入力が未探索か」を測るなら，原則として潜在関数の事後分散\(\sigma_*^2\)を使う．
+観測noiseまで加えた分散を使うと，何度観測しても消えないnoiseを探索価値と誤認する可能性がある．
+一方，実際に得る観測値の散らばりやriskを予測したいなら，\(\sigma_*^2+\sigma_n^2\)が必要である．
+\end{applicationbox}
+
+\subsection{実装では逆行列を作らない}
+
+数式では\(\bm K_y^{-1}\)と書くが，数値計算では逆行列を陽に計算しない．
+Cholesky分解
+\begin{equation}
+  \bm K_y=\bm L\bm L^\T
+\end{equation}
+を行い，三角連立方程式を解く．例えば
+\begin{align}
+  \bm L\bm v&=\bm y-\bm m_X,\\
+  \bm L^\T\bm\alpha&=\bm v
+\end{align}
+から\(\bm\alpha=\bm K_y^{-1}(\bm y-\bm m_X)\)を得る．
+計算量は通常\(O(n^3)\)，記憶量は\(O(n^2)\)である．
+
+決定論的シミュレータで\(\sigma_n^2\)をほぼ0とする場合でも，数値安定化のため
+\begin{equation}
+  \bm K_y\leftarrow\bm K_y+\varepsilon_{\mathrm{jitter}}\I
+\end{equation}
+という小さいjitterを加えることがある．これは物理noiseを主張する操作ではなく，
+ほぼ重複した入力による悪条件化を避ける数値処理である．
+
+\enlargethispage{2\baselineskip}
+\begin{checkpointbox}
+\begin{enumerate}
+  \item GPRの事後式は，どの確率分布の公式を使って得たか．
+  \item 固定ハイパーパラメータのもとで，事後平均と事後分散のどちらが観測値\(\bm y\)に直接依存するか．
+  \item 潜在関数分散とnoise付き観測分散の違いは何か．
+\end{enumerate}
+\textbf{答え：} 条件付き多変量正規分布である．観測値に直接依存するのは平均である．
+後者は前者に観測noise分散\(\sigma_n^2\)を加えたものである．
+\end{checkpointbox}
+
+\section{カーネルのハイパーパラメータをどう学ぶか}
+\label{sec:hyperparameters}
+
+\subsection{パラメータとハイパーパラメータ}
+
+線形回帰では重み\(\bm w\)が関数形を直接決める．GPRでは関数値を積分消去して予測するため，
+カーネルの\(\sigma_f,\ell\)，noiseの\(\sigma_n\)，平均関数の係数などを調整する．
+これらをまとめて\(\bm\theta\)と書き，ハイパーパラメータと呼ぶ．
+
+同じデータでも\(\ell\)が極端に小さければ各点を別々の現象とみなし，ぎざぎざの予測になる．
+極端に大きければ全領域をほぼ一定とみなし，細かな変化を消す．そこで，
+「そのハイパーパラメータの下で，観測データ全体がどれくらい自然に生じるか」を評価する．
+
+\subsection{周辺尤度}
+
+式\eqref{eq:y-prior}より
+\begin{equation}
+  \bm y\mid\bm X,\bm\theta
+  \sim\N(\bm m_X,\bm K_y),
+  \qquad
+  \bm K_y=\bm K_{XX}(\bm\theta)+\sigma_n^2\I.
+\end{equation}
+多変量正規密度\eqref{eq:multivariate-normal-density}へ代入し，対数を取る．
+\(\bm r=\bm y-\bm m_X\)とすれば
+\begin{equation}
+  \boxed{
+  \log p(\bm y\mid\bm X,\bm\theta)
+  =-\frac12\bm r^\T\bm K_y^{-1}\bm r
+  -\frac12\log|\bm K_y|
+  -\frac n2\log(2\pi).}
+  \label{eq:log-marginal-likelihood}
+\end{equation}
+これを対数周辺尤度（log marginal likelihood; LML）と呼ぶ．
+
+\begin{description}
+  \item[第1項：データ適合] \(\bm r^\T\bm K_y^{-1}\bm r\)が小さい共分散構造を好む．
+  単純な二乗誤差ではなく，カーネルが予測する連動方向で測った誤差である．
+  \item[第2項：複雑さへの罰則] \(\log|\bm K_y|\)は，モデルが許す関数値ベクトルの体積と関係する．
+  あらゆるデータを広く許すだけのモデルは密度が薄まり，罰せられる．
+  \item[第3項：正規化定数] データ数だけで決まる．
+\end{description}
+
+\begin{intuitionbox}[なぜ「周辺」尤度か]
+重み空間で書けば，未知重み\(\bm w\)を残した尤度ではなく
+\begin{equation}
+  p(\bm y\mid\bm X,\bm\theta)
+  =\int p(\bm y\mid\bm w,\bm X)p(\bm w\mid\bm\theta)\,d\bm w
+\end{equation}
+のように，未知重みを積分して消した量である．
+一つの最適重みだけでなく，そのハイパーパラメータが許す全関数を考慮するため，
+データ適合とモデルの柔軟さが自動的に釣り合う．
+\end{intuitionbox}
+
+\subsection{周辺尤度の勾配}
+
+最適化で用いる代表的な勾配も示す．平均関数を固定し，
+\(\bm\alpha=\bm K_y^{-1}\bm r\)とすれば
+\begin{equation}
+  \frac{\partial\log p(\bm y\mid\bm X,\bm\theta)}{\partial\theta_j}
+  =\frac12\tr\left[
+  \left(\bm\alpha\bm\alpha^\T-\bm K_y^{-1}\right)
+  \frac{\partial\bm K_y}{\partial\theta_j}
+  \right].
+  \label{eq:lml-gradient}
+\end{equation}
+局所最適解があり得るため，複数初期値から最適化したり，物理的に妥当な範囲へ制約したりする．
+
+\begin{cautionbox}[小標本での過剰なハイパーパラメータ]
+教師数が数十なのに，raw 30次元ARDで30個のlength scaleと多数のoutput covarianceを同時に学ぶと，
+LMLの局所解や境界解が生じやすい．最初は入力を物理的に低次元化し，
+共通length scaleまたは少数blockごとのlength scaleから始める方が診断しやすい．
+\end{cautionbox}
+
+\section{「GPの分散」を四種類に分ける}
+\label{sec:variance-taxonomy}
+
+「GPが分散を出す」という一言には，異なる対象が混ざりやすい．
+ここでは入力を\(\bm x\)，出力成分を\(Z_j\)と書き，四種類を区別する．
+
+\subsection{種類1：一入力・一出力の予測分散}
+
+scalar output \(f(\bm x)\)について
+\begin{equation}
+  f(\bm x)\mid\D_t
+  \sim\N(\mu_t(\bm x),\sigma_t^2(\bm x))
+  \label{eq:scalar-posterior-repeated}
+\end{equation}
+と書くときの\(\sigma_t^2(\bm x)\)である．一つの候補入力における縦方向の不確実性を表す．
+ライブラリが\code{predict(return\_std=True)}のような形で返す値は，通常この平方根
+\(\sigma_t(\bm x)\)である．
+
+\subsection{種類2：異なる入力点間の事後共分散}
+
+同じscalar functionでも，二つのtest inputsについて
+\begin{equation}
+  \Cov_t[f(\bm x),f(\bm x')]
+  =k(\bm x,\bm x')
+  -\bm k_{xX}\bm K_y^{-1}\bm k_{Xx'}
+  \label{eq:posterior-cross-input-covariance}
+\end{equation}
+がある．\(\bm x=\bm x'\)とすれば種類1の分散になる．
+複数候補の関数値を同時にsampleするとき，この共分散により標本が一つの関数らしくつながる．
+
+\begin{cautionbox}[各候補を独立な正規乱数としてsampleしない]
+Thompson samplingで各候補に対し独立に
+\(\N(\mu_t(\bm x),\sigma_t^2(\bm x))\)から値を引くと，
+近い候補同士の相関を壊し，ぎざぎざの「関数でない標本」を作る．
+候補集合全体のjoint covarianceから同時sampleする必要がある．
+\end{cautionbox}
+
+\subsection{種類3：同じ入力における複数出力間の共分散}
+
+終端descriptorが\(p\)次元なら
+\begin{equation}
+  \bm Z(\bm x)
+  =[Z_1(\bm x),\ldots,Z_p(\bm x)]^\T
+\end{equation}
+である．一候補\(\bm x\)での多出力予測を
+\begin{equation}
+  \bm Z(\bm x)\mid\D_t
+  \sim\N(\bm\mu_t(\bm x),\bm\Sigma_t(\bm x))
+  \label{eq:multioutput-posterior}
+\end{equation}
+と書く．この\(\bm\Sigma_t(\bm x)\in\R^{p\times p}\)が質問にあった
+\emph{多出力共分散行列}である．
+\begin{equation}
+  \bm\Sigma_t(\bm x)=
+  \begin{bmatrix}
+    \Var_t[Z_1]&\Cov_t[Z_1,Z_2]&\cdots\\
+    \Cov_t[Z_2,Z_1]&\Var_t[Z_2]&\cdots\\
+    \vdots&\vdots&\ddots
+  \end{bmatrix}.
+  \label{eq:multioutput-covariance-elements}
+\end{equation}
+対角は各descriptor成分の予測分散，非対角は同じ候補でのdescriptor成分間の予測誤差の連動である．
+
+\subsection{種類4：複数入力・複数出力の全joint covariance}
+
+候補が\(q\)個，出力が\(p\)個なら，すべてを
+\begin{equation}
+  \bm z_{\mathrm{all}}
+  =\operatorname{vec}\begin{bmatrix}
+    \bm Z(\bm x_1)^\T\\\vdots\\\bm Z(\bm x_q)^\T
+  \end{bmatrix}
+  \in\R^{qp}
+\end{equation}
+と並べ，\(qp\times qp\)の共分散行列を持つ．この行列には
+入力間の共分散と出力間の共分散の両方が入る．batchで複数候補を一度に選ぶ場合に重要である．
+
+\begin{table}[H]
+\centering
+\caption{「GPの分散・共分散」の対象を分ける．}
+\label{tab:variance-types}
+\begin{tabularx}{\textwidth}{C{12mm}C{28mm}C{29mm}Y}
+\toprule
+種類&入力&出力&表すもの\\
+\midrule
+1&一つ&一つ&一点でのscalar prediction uncertainty\\
+2&複数&一つ&異なる候補入力での関数値の連動\\
+3&一つ&複数&同じ候補でのdescriptor成分間の連動\\
+4&複数&複数&batch候補と全descriptorをまとめたjoint uncertainty\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{scalar GPが返す分散との違い}
+
+出力成分ごとに独立なscalar GPを\(p\)個学習すると，それぞれは
+\begin{equation}
+  Z_j(\bm x)\mid\D_t
+  \sim\N(\mu_j(\bm x),\sigma_j^2(\bm x))
+\end{equation}
+を返す．これらをまとめれば
+\begin{equation}
+  \bm\Sigma_t^{\mathrm{ind}}(\bm x)
+  =\diag(\sigma_1^2(\bm x),\ldots,\sigma_p^2(\bm x)).
+  \label{eq:independent-output-covariance}
+\end{equation}
+非対角成分は0なので，出力間相関を表現していない．
+
+例えばterminal descriptorの\(x_1\)が予測より正方向へずれるとき，
+部材長拘束により\(x_2\)も同方向へずれやすいかもしれない．独立GPはこの連動を使わない．
+一方，多出力GPは\(\Cov[Z_1,Z_2]\neq0\)を学習し，不確実性楕円の向きを表せる．
+
+\subsection{多出力相関を表す三つの方法}
+
+\paragraph{方法A：出力ごとの独立GP}
+最小構成であり，実装・学習が安定しやすい．ただし出力相関は失う．
+
+\paragraph{方法B：coregionalization}
+例えばseparable kernel
+\begin{equation}
+  \Cov[Z_j(\bm x),Z_k(\bm x')]
+  =B_{jk}\,k_x(\bm x,\bm x')
+  \label{eq:separable-multioutput-kernel}
+\end{equation}
+を使う．\(\bm B\)はcoregionalization matrix，\(k_x\)は入力間共分散を担う．
+同一入力における出力共分散は\(\bm B\,k_x(\bm x,\bm x)\)である．
+柔軟だが，\(p\)が大きいと\(\bm B\)の推定が重く，小標本では過適合し得る．
+
+\paragraph{方法C：output PCA + latent GP}
+教師出力を
+\begin{equation}
+  \bm Z\approx\bar{\bm z}+\bm U\bm h
+  \label{eq:output-pca}
+\end{equation}
+と低次元latent coordinate \(\bm h\in\R^r\)へ圧縮し，\(h_1,\ldots,h_r\)へGPを学習する．
+latent covarianceを\(\bm\Sigma_h\)とすれば，元空間の共分散は
+\begin{equation}
+  \bm\Sigma_Z=\bm U\bm\Sigma_h\bm U^\T
+  \label{eq:pca-output-covariance}
+\end{equation}
+と復元できる．節点座標が拘束により低次元多様体上にある場合に有効である．
+ただし\(r<p\)ならこの行列は一般にrank \(r\)であり，元の\(p\)次元空間では特異になる．
+後述の逆行列を用いる信用楕円を元空間で作るなら，切り捨てたPCA残差の共分散
+\(\bm\Sigma_{\mathrm{res}}\succ0\)を加えて
+\(\bm\Sigma_Z=\bm U\bm\Sigma_h\bm U^\T+\bm\Sigma_{\mathrm{res}}\)とする．
+残差を加えない場合は，latent空間で自由度\(r\)の楕円を作るか，
+Moore--Penrose疑似逆行列と有効rank \(r\)を用いなければならない．
+
+\subsection{traceは何を表すか}
+
+予測誤差を\(\bm\delta=\bm Z-\bm\mu\)とし，\(\E[\bm\delta]=\bm0\)，
+\(\E[\bm\delta\bm\delta^\T]=\bm\Sigma\)とする．重み付き二乗誤差の期待値は
+\begin{align}
+  \E[\|\bm\delta\|_W^2]
+  &=\E[\bm\delta^\T\bm W\bm\delta]\notag\\
+  &=\E[\tr(\bm W\bm\delta\bm\delta^\T)]\notag\\
+  &=\tr(\bm W\E[\bm\delta\bm\delta^\T])\notag\\
+  &=\boxed{\tr(\bm W\bm\Sigma)}.
+  \label{eq:expected-weighted-error-trace}
+\end{align}
+したがって
+\begin{equation}
+  \sqrt{\tr(\bm W\bm\Sigma)}
+  \label{eq:rms-uncertainty}
+\end{equation}
+は，重み付き予測誤差のRMS的な大きさである．
+
+\begin{cautionbox}[traceだけでは楕円の向きを完全には使わない]
+\(\bm W=\I\)なら\(\tr(\bm\Sigma)\)は対角分散の総和であり，
+式\eqref{eq:positive-negative-covariance}の\(\bm\Sigma_+\)と\(\bm\Sigma_-\)で同じ値2になる．
+つまり総不確実性の量は測れるが，どちらの方向へ広がるかは消える．
+archive cell境界が方向に依存する場合，共分散行列から直接sampleするか，
+後述する最大固有値半径を用いる方が多出力共分散を活かせる．
+\end{cautionbox}
+
+\subsection{予測分散は「未探索」の証明ではない}
+
+正確には，GP分散は
+\begin{quote}
+選んだ入力表現，カーネル，ハイパーパラメータ，noise modelが正しいという仮定の下でのposterior uncertainty
+\end{quote}
+である．30次元空間で距離が集中すると，ほぼ全候補が訓練点から遠く，
+どれも似た事前分散になることがある．また真の写像がbasin境界で不連続なのに滑らかなRBFを使えば，
+境界を平均化しながら過小な分散を出すこともある．
+
+したがって，探索に分散を使う前に次を確認する．
+\begin{enumerate}
+  \item held-outまたは逐次予測で，予測区間の被覆率が名目値に近いか．
+  \item 予測標準偏差が大きい点ほど実際の誤差も大きいか．
+  \item raw inputより物理的な低次元表現の方が近傍関係を正しく表すか．
+  \item OOD候補をGPが過信していないか．
+\end{enumerate}
+
+\begin{checkpointbox}
+\begin{enumerate}
+  \item 一つのscalar GPの\(\sigma^2(\bm x)\)と，多出力\(\bm\Sigma(\bm x)\)の違いは何か．
+  \item 独立なGPを出力ごとに学習したとき，\(\bm\Sigma\)の非対角成分はどうなるか．
+  \item \(\sqrt{\tr(\bm W\bm\Sigma)}\)は何の大きさか．厳密な信頼半径と同じか．
+\end{enumerate}
+\textbf{答え：} 前者は一出力の一点分散，後者は全出力成分の分散と成分間共分散を並べた行列である．
+独立GPでは非対角は0である．traceの平方根は重み付き予測誤差のRMS scaleであり，
+信頼水準を指定した半径にするには分布の分位点や信頼楕円を追加する必要がある．
+\end{checkpointbox}
+
+\section{ベイズ最適化：回帰から意思決定へ}
+\label{sec:bayesian-optimization}
+
+\subsection{対象となる問題}
+
+評価一回が高価なblack-box function
+\begin{equation}
+  f:\mathcal X\to\R
+\end{equation}
+を，少ない評価回数で最大化したいとする．勾配や解析式は使えず，\(\bm x\)を選んで
+実験・simulationを実行したときだけ\(y\)を得られる．ベイズ最適化は，代理モデルと逐次意思決定を組み合わせる
+\citep{jones1998ego,shahriari2016bo}．
+
+\begin{enumerate}
+  \item 初期点を数点評価し，データ\(\D_t\)を作る．
+  \item GPRを学習し，各候補で\(\mu_t(\bm x),\sigma_t(\bm x)\)を得る．
+  \item 獲得関数\(\alpha_t(\bm x)\)を計算する．
+  \item \(\bm x_{t+1}=\argmax_{\bm x\in\mathcal X}\alpha_t(\bm x)\)を高価な関数で評価する．
+  \item データを追加し，予算が尽きるまで繰り返す．
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=8mm and 9mm,
+  box/.style={draw,rounded corners,align=center,minimum width=31mm,minimum height=11mm,fill=blue!5},
+  arr/.style={-{Latex[length=2.2mm]},thick,blue!55!black}
+]
+  \node[box] (data) {実評価データ\\$\D_t$};
+  \node[box,right=of data] (gp) {GPRを更新\\$\mu_t,\sigma_t$};
+  \node[box,right=of gp] (acq) {獲得関数\\$\alpha_t$};
+  \node[box,below=of acq] (select) {次候補を選択\\$\argmax\alpha_t$};
+  \node[box,left=of select] (eval) {高価なrollout\\$y_{t+1}$};
+  \draw[arr] (data)--(gp);
+  \draw[arr] (gp)--(acq);
+  \draw[arr] (acq)--(select);
+  \draw[arr] (select)--(eval);
+  \draw[arr] (eval)--(data);
+\end{tikzpicture}
+\caption{Bayesian optimizationの逐次loop．代理モデルと獲得関数は別の役割を持つ．}
+\label{fig:bo-loop}
+\end{figure}
+
+\subsection{獲得関数は何を最適化するか}
+
+高価な真の関数\(f\)の代わりに，安価な\(\alpha_t\)を何度でも評価・最適化する．
+獲得関数の設計は「次の一回に何を期待するか」を数式化することに等しい．
+
+\begin{description}
+  \item[活用（exploitation）] 現在の予測で既に良さそうな領域を評価する．
+  \item[探索（exploration）] 不確実で，観測により知識が増えそうな領域を評価する．
+\end{description}
+代表的獲得関数は，この二つを別々の意味で両立させる．
+
+以下は最大化問題として統一する．最小化問題では\(-f\)を最大化するか，
+UCBをLCBへ変える．noiseがあるとき「現在の最良値」を単純な最大観測値にすると
+正のnoiseを拾うので，最良の事後平均などをincumbentとして使う場合がある．
+
+\section{局所的な予測分布を使う代表的獲得関数}
+\label{sec:local-acquisitions}
+
+本節では一点\(\bm x\)で
+\begin{equation}
+  F(\bm x)\mid\D_t
+  \sim\N(\mu_t(\bm x),\sigma_t^2(\bm x))
+  \label{eq:bo-posterior}
+\end{equation}
+とする．記号を簡潔にする箇所では\(\mu=\mu_t(\bm x),\sigma=\sigma_t(\bm x)\)と書く．
+
+\subsection{random，予測平均，予測分散}
+
+\paragraph{一様random}
+\begin{equation}
+  \bm x_{t+1}\sim\operatorname{Unif}(\mathcal X)
+\end{equation}
+は代理モデルを使わない．獲得関数の賢さを評価する強いbaselineであり，
+モデルの誤指定によって永久に領域を無視する危険を抑える．ただし既得情報を活用しない．
+
+\paragraph{pure exploitation}
+\begin{equation}
+  \alpha_{\mathrm{mean}}(\bm x)=\mu_t(\bm x)
+  \label{eq:posterior-mean-acquisition}
+\end{equation}
+は現在最も良さそうな点を選ぶ．局所解へ早く集中し，未知領域を調べない．
+
+\paragraph{uncertainty sampling}
+\begin{equation}
+  \alpha_{\mathrm{var}}(\bm x)=\sigma_t(\bm x)
+  \label{eq:uncertainty-sampling}
+\end{equation}
+は関数全体を学ぶactive learningとしては自然だが，目的値の良さを無視する．
+最適化よりglobal surrogate accuracyが目的のときに適する．
+
+\subsection{改善確率：Probability of Improvement}
+\label{sec:pi}
+
+現在の最良値を\(f_t^+\)，要求する最小改善幅を\(\xi\geq0\)とする．
+改善事象は
+\begin{equation}
+  F(\bm x)>f_t^++\xi
+\end{equation}
+である．よってPIは
+\begin{align}
+  \alpha_{\mathrm{PI}}(\bm x)
+  &=\Pp(F(\bm x)>f_t^++\xi\mid\D_t)\notag\\
+  &=\Pp\left(
+  \frac{F(\bm x)-\mu}{\sigma}
+  >\frac{f_t^++\xi-\mu}{\sigma}
+  \right).
+\end{align}
+左辺の標準化変数は\(\N(0,1)\)なので，\(1-\Phi(-z)=\Phi(z)\)を用い
+\begin{equation}
+  z(\bm x)=\frac{\mu_t(\bm x)-f_t^+-\xi}{\sigma_t(\bm x)}
+  \label{eq:pi-z}
+\end{equation}
+と置けば
+\begin{equation}
+  \boxed{
+  \alpha_{\mathrm{PI}}(\bm x)=\Phi(z(\bm x)).}
+  \label{eq:pi-acquisition}
+\end{equation}
+\(\sigma=0\)では，改善が確定なら1，そうでなければ0と定義する．
+
+\begin{intuitionbox}[PIの長所と弱点]
+PIは「改善するか否か」だけを見る．現在最良値を0.001だけ上回る確率が0.9の点と，
+10上回る確率が0.5の点なら前者を選び得る．\(\xi\)を大きくすると大きな改善を要求して探索的になるが，
+改善量を連続的には評価しない．
+\end{intuitionbox}
+
+\subsection{期待改善量：Expected Improvement}
+\label{sec:ei}
+
+改善量そのものを
+\begin{equation}
+  I(\bm x)=\max(F(\bm x)-f_t^+-\xi,0)
+  \label{eq:improvement-rv}
+\end{equation}
+と定義し，その期待値をscoreにする\citep{jones1998ego}．閾値を
+\(T=f_t^++\xi\)と書けば
+\begin{align}
+  \alpha_{\mathrm{EI}}(\bm x)
+  &=\E[I(\bm x)\mid\D_t]\notag\\
+  &=\int_T^\infty(F-T)
+  \frac{1}{\sqrt{2\pi}\sigma}
+  \exp\left[-\frac{(F-\mu)^2}{2\sigma^2}\right]dF.
+  \label{eq:ei-integral}
+\end{align}
+
+標準化変数\(u=(F-\mu)/\sigma\)を導入すると
+\begin{equation}
+  F=\mu+\sigma u,
+  \qquad dF=\sigma du,
+  \qquad F=T\Longleftrightarrow u=-z,
+\end{equation}
+ただし\(z=(\mu-T)/\sigma\)である．したがって
+\begin{align}
+  \alpha_{\mathrm{EI}}
+  &=\int_{-z}^{\infty}(\mu-T+\sigma u)\phi(u)\,du\notag\\
+  &=(\mu-T)\int_{-z}^{\infty}\phi(u)\,du
+  +\sigma\int_{-z}^{\infty}u\phi(u)\,du.
+  \label{eq:ei-split-integral}
+\end{align}
+正規分布の対称性と\(\phi'(u)=-u\phi(u)\)から
+\begin{align}
+  \int_{-z}^{\infty}\phi(u)du&=\Phi(z),\\
+  \int_{-z}^{\infty}u\phi(u)du&=\phi(z)
+\end{align}
+なので
+\begin{equation}
+  \boxed{
+  \alpha_{\mathrm{EI}}(\bm x)
+  =(\mu_t-f_t^+-\xi)\Phi(z)
+  +\sigma_t\phi(z),
+  \qquad
+  z=\frac{\mu_t-f_t^+-\xi}{\sigma_t}.}
+  \label{eq:ei-closed-form}
+\end{equation}
+\(\sigma_t=0\)なら分布は一点に退化するため，
+\begin{equation}
+  \alpha_{\mathrm{EI}}(\bm x)=\max(\mu_t-T,0)
+\end{equation}
+と定義する．
+
+\begin{description}
+  \item[第1項] 予測平均による改善の大きさに，改善し得る確率を掛けた活用成分である．
+  \item[第2項] 不確実性によって大きな値が現れる可能性を表す探索成分である．
+\end{description}
+
+\begin{cautionbox}[EIの二項を完全に独立な活用・探索とは考えすぎない]
+\(z\)は\(\mu\)と\(\sigma\)の両方を含むため，二項は相互依存している．
+「第1項が活用，第2項が探索」は有用な直感だが，二つの独立scoreを足したわけではない．
+\end{cautionbox}
+
+\subsection{Upper Confidence BoundとLower Confidence Bound}
+\label{sec:ucb}
+
+一点固定の正規予測について
+\begin{equation}
+  \frac{F(\bm x)-\mu_t(\bm x)}{\sigma_t(\bm x)}\sim\N(0,1)
+\end{equation}
+である．上側分位点を\(\kappa\)とすると
+\begin{equation}
+  \Pp\left(
+  F(\bm x)\leq\mu_t(\bm x)+\kappa\sigma_t(\bm x)
+  \right)=\Phi(\kappa).
+  \label{eq:pointwise-gaussian-quantile}
+\end{equation}
+「不確実性の範囲でうまくいった場合の楽観値」を最大化するのがUCBである．
+\begin{equation}
+  \boxed{
+  \alpha_{\mathrm{UCB},t}(\bm x)
+  =\mu_t(\bm x)+\sqrt{\beta_t}\,\sigma_t(\bm x).}
+  \label{eq:gp-ucb}
+\end{equation}
+最小化では
+\begin{equation}
+  \alpha_{\mathrm{LCB},t}(\bm x)
+  =\mu_t(\bm x)-\sqrt{\beta_t}\,\sigma_t(\bm x)
+  \label{eq:gp-lcb}
+\end{equation}
+を最小化する．\(\sqrt{\beta_t}\)が大きいほど探索を重視する．
+
+\paragraph{一点の分位点とGP-UCBの同時保証は別である}
+式\eqref{eq:pointwise-gaussian-quantile}は，固定した一点・固定時刻のstatementである．
+すべての候補点と全時刻で真の関数をUCBが同時に覆うには，多重比較を考慮して\(\beta_t\)を大きくする．
+有限候補集合\(\mathcal X\)の代表例として
+\begin{equation}
+  \beta_t
+  =2\log\left(
+  \frac{|\mathcal X|\pi^2t^2}{6\delta}
+  \right)
+  \label{eq:finite-domain-beta}
+\end{equation}
+を用いると，高確率事象上で全\(\bm x,t\)を覆う形を作れる\citep{srinivas2010gpucb}．
+連続領域やカーネル仮定の下でのregret解析には，さらにRKHS normやinformation gain等の条件が入る．
+
+\begin{cautionbox}[通常UCB1とGP-UCBの違い]
+multi-armed banditのUCB1は，各armを選んだ回数と経験平均からbonusを作る．
+GP-UCBは連続入力間の相関をカーネルで共有し，近傍点の観測でも\(\sigma_t(\bm x)\)を減らす．
+数式の「平均+不確実性bonus」は似るが，不確実性の作り方が異なる．
+\end{cautionbox}
+
+\subsection{PI，EI，UCBを数値で比較する}
+
+\(f_t^+=1.0,\xi=0\)とし，二候補を考える．
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+候補&\(\mu\)&\(\sigma\)&\(z=(\mu-f^+)/\sigma\)&特徴\\
+\midrule
+A&1.1&0.1&1.0&平均が少し良く確実\\
+B&0.8&0.6&-0.333&平均は悪いが不確実\\
+\bottomrule
+\end{tabular}
+\end{center}
+PIはAを強く好む．EIはBの大改善のtailも評価する．UCBは\(\sqrt\beta\)が小さければA，
+大きければBを選ぶ．同じposteriorでも，「次の一回に何を求めるか」により選択は変わる．
+
+\begin{checkpointbox}
+\begin{enumerate}
+  \item PIとEIの違いは何か．
+  \item UCBで\(\sigma^2\)でなく\(\sigma\)を用いる理由は何か．
+  \item 一点の95\%上側分位点を使えば，自動的に全候補・全時刻で95\%の保証になるか．
+\end{enumerate}
+\textbf{答え：} PIは改善の有無，EIは改善量の期待値を評価する．
+平均と単位を揃えるため標準偏差を使う．一点保証は同時保証ではなく，多重性と時刻依存を考慮した\(\beta_t\)が必要である．
+\end{checkpointbox}
+
+\section{関数全体・将来の知識を使う獲得関数}
+\label{sec:global-acquisitions}
+
+PI，EI，UCBは主に候補一点での平均・分散から作れる．ここでは，
+GPのjoint posteriorや「観測後に知識がどう変わるか」をより直接的に使う方法を扱う．
+
+\subsection{Thompson sampling}
+\label{sec:thompson}
+
+posteriorから関数を一本sampleし，そのsampleで最良の点を選ぶ\citep{thompson1933}．
+\begin{align}
+  \widetilde f_t&\sim p(f\mid\D_t),\\
+  \bm x_{t+1}&=\argmax_{\bm x\in\mathcal X}\widetilde f_t(\bm x).
+  \label{eq:thompson-sampling}
+\end{align}
+posteriorが既知の高い領域を支持すればそこが選ばれやすく，不確実な領域が偶然高い標本を取れば探索される．
+探索係数を明示的に足さず，posterior beliefに比例して候補を選ぶprobability matchingである．
+
+有限候補\(\bm x_1,\ldots,\bm x_q\)なら
+\begin{equation}
+  \begin{bmatrix}
+  \widetilde f(\bm x_1)\\\vdots\\\widetilde f(\bm x_q)
+  \end{bmatrix}
+  \sim\N(\bm\mu_*,\bm\Sigma_*)
+\end{equation}
+から\emph{同時に}sampleする．種類2の入力間共分散がここで必要になる．
+
+\begin{intuitionbox}[並列探索との相性]
+posterior functionを複数本独立にsampleし，各標本の最大点を選べば，異なる候補が自然に得られる．
+似た候補を重複して選ぶ可能性はあるが，単純にUCB上位\(q\)点を取るより多様になりやすい．
+\end{intuitionbox}
+
+\subsection{Knowledge Gradient}
+\label{sec:knowledge-gradient}
+
+現在，最後に推薦する解をposterior mean最大点とする．現在の価値は
+\begin{equation}
+  V_t=\max_{\bm x'}\mu_t(\bm x')
+\end{equation}
+である．候補\(\bm x\)を観測すると，未知の観測値\(Y_{\bm x}\)に応じてposterior mean全体が
+\(\mu_{t+1}\)へ変わる．その結果の価値を観測前に平均し，現在との差を取る．
+\begin{equation}
+  \boxed{
+  \alpha_{\mathrm{KG},t}(\bm x)
+  =\E_{Y_{\bm x}\mid\D_t}\left[
+  \max_{\bm x'}\mu_{t+1}(\bm x';Y_{\bm x})
+  \right]
+  -\max_{\bm x'}\mu_t(\bm x').}
+  \label{eq:knowledge-gradient}
+\end{equation}
+KGは，観測点自身の改善だけでなく，カーネル相関を通じて他候補の平均順位が変わる価値を測る
+\citep{frazier2009kg}．noiseのある有限予算問題に自然だが，仮想観測ごとのposterior更新を積分するためPI/EIより高価である．
+
+\subsection{entropyと相互情報量の準備}
+
+離散確率変数\(X\)のentropyを
+\begin{equation}
+  H(X)=-\sum_x p(x)\log p(x)
+  \label{eq:discrete-entropy}
+\end{equation}
+と定義する．分布が一つの値に集中すれば0，複数候補に広がるほど大きい．
+連続変数では和を積分へ変えたdifferential entropyを使う．
+
+\(X\)と\(Y\)の相互情報量は
+\begin{align}
+  I(X;Y)
+  &=H(X)-H(X\mid Y)\notag\\
+  &=H(Y)-H(Y\mid X)
+  \label{eq:mutual-information}
+\end{align}
+である．\(Y\)を知ることで\(X\)の不確実性が平均的にどれだけ減るかを表す．
+
+\subsection{Entropy Search}
+
+真の最大点を
+\begin{equation}
+  \bm x^*=\argmax_{\bm x}f(\bm x)
+\end{equation}
+とする．Entropy Searchは，候補\(\bm x\)での次観測\(Y_{\bm x}\)が
+最大点\(\bm x^*\)について与える相互情報量を最大化する\citep{hennig2012entropy}．
+\begin{align}
+  \alpha_{\mathrm{ES},t}(\bm x)
+  &=I(Y_{\bm x};\bm x^*\mid\D_t)\notag\\
+  &=H(\bm x^*\mid\D_t)
+  -\E_{Y_{\bm x}\mid\D_t}
+  [H(\bm x^*\mid\D_t,Y_{\bm x})].
+  \label{eq:entropy-search}
+\end{align}
+「次に高い値を取りそうか」ではなく，「最大点がどこかを最も教えるか」を選ぶ．
+目的に直接的だが，\(\argmax\)の分布を近似する計算が重い．
+
+\subsection{Predictive Entropy Search}
+
+相互情報量の対称性から
+\begin{align}
+  I(Y_{\bm x};\bm x^*\mid\D_t)
+  &=H(Y_{\bm x}\mid\D_t)
+  -\E_{\bm x^*\mid\D_t}
+  [H(Y_{\bm x}\mid\D_t,\bm x^*)].
+  \label{eq:predictive-entropy-search}
+\end{align}
+と書き換え，予測分布側のentropy減少を計算するのがPESの中心である
+\citep{hernandezlobato2014pes}．ESと同じ相互情報量を別方向から評価するが，
+条件\(\bm x^*\)を課した予測分布の近似が必要である．
+
+\subsection{Max-value Entropy Search}
+
+最大位置\(\bm x^*\)でなく最大値
+\begin{equation}
+  f^*=\max_{\bm x}f(\bm x)
+\end{equation}
+について情報を得る．
+\begin{equation}
+  \alpha_{\mathrm{MES},t}(\bm x)
+  =I(Y_{\bm x};f^*\mid\D_t).
+  \label{eq:mes}
+\end{equation}
+\(f^*\)はscalarなので，\(\bm x^*\)の高次元分布より扱いやすいことが多い
+\citep{wang2017mes}．
+
+\begin{intuitionbox}[EIとinformation-based acquisitionの違い]
+EIは「次の観測そのものが現在最良をどれだけ改善するか」を見る．
+ES/PES/MESは「次の観測が最適解について何を教えるか」を見る．
+最適値が低そうな点でも，二つの有望basinを識別する情報が大きければ後者は選び得る．
+\end{intuitionbox}
+
+\subsection{多目的最適化のExpected Hypervolume Improvement}
+
+目的が\(m\)個あるとき，単一の最大値ではなくPareto frontを求める．
+基準点に対して現在の非劣解集合が支配する体積をhypervolume \(HV\)とする．
+候補出力\(\bm F(\bm x)\)による増分\(\Delta HV\)の期待値
+\begin{equation}
+  \alpha_{\mathrm{EHVI}}(\bm x)
+  =\E[\Delta HV(\bm F(\bm x))\mid\D_t]
+  \label{eq:ehvi}
+\end{equation}
+がExpected Hypervolume Improvementである．
+
+\begin{cautionbox}[多目的最適化とQDは同じではない]
+多目的最適化は目的値のtrade-offによるPareto frontを求める．
+MAP-Elites型QDはbehavior descriptorで区別したcellごとに高品質解を保存する．
+終端形状descriptorは「最大化すべき複数目的」というより「異なる結果を分類する座標」であるため，
+EHVIをそのまま使うよりarchive改善を定義する方が目的に合う．
+\end{cautionbox}
+
+\section{制約・コスト・batchを含む獲得関数}
+\label{sec:acquisition-extensions}
+
+\subsection{制約付きBayesian optimization}
+
+制約\(g_j(\bm x)\leq0\)が未知で，それぞれへ確率モデルを置く．
+目的と制約がposterior上で独立と近似できるなら，制約を満たすEIは
+\begin{equation}
+  \alpha_{\mathrm{CEI}}(\bm x)
+  =\alpha_{\mathrm{EI}}(\bm x)
+  \prod_{j=1}^J\Pp(g_j(\bm x)\leq0\mid\D_t)
+  \label{eq:constrained-ei}
+\end{equation}
+となる\citep{gardner2014constrained}．
+本研究なら「flatに到達し，collisionでない確率」をfeasibility probabilityとして扱える．
+
+\subsection{コスト考慮}
+
+候補ごとにrollout mechanics-step \(C(\bm x)>0\)が異なるなら
+\begin{equation}
+  \alpha_{\mathrm{cost}}(\bm x)
+  =\frac{\alpha(\bm x)}{\E[C(\bm x)\mid\D_t]+\varepsilon}
+  \label{eq:cost-aware-acquisition}
+\end{equation}
+とすれば，一評価でなく一step当たりの期待価値を測れる．
+ただし単純な比は，安いがほぼ無価値な候補を過度に好む場合があり，budget残量に応じた設計もあり得る．
+
+\subsection{batch acquisition}
+
+同時に\(q\)候補を評価するとき，scalar score上位\(q\)点を取るだけでは似た点が重複する．
+batch EIは候補集合\(\bm X_q=(\bm x_1,\ldots,\bm x_q)\)に対し
+\begin{equation}
+  q\mathrm{EI}(\bm X_q)
+  =\E\left[
+  \max\left(\max_{i=1,\ldots,q}F(\bm x_i)-f_t^+-\xi,0\right)
+  \right]
+  \label{eq:qei}
+\end{equation}
+を評価する．ここで種類2の候補間共分散が必要である．
+他にq-UCB，batch Thompson sampling，既選択点の近傍を罰するlocal penalization，
+未完了評価を仮想観測するfantasizationがある．
+
+\subsection{代表的獲得関数の比較}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3.5pt}
+\begin{longtable}{C{22mm}p{34mm}p{48mm}p{48mm}}
+\caption{代表的な獲得関数の選択原理，長所，弱点．}
+\label{tab:acquisition-comparison}\\
+\toprule
+手法&次点として選ぶもの&長所&主な弱点\\
+\midrule
+\endfirsthead
+\toprule
+手法&次点として選ぶもの&長所&主な弱点\\
+\midrule
+\endhead
+Random&一様またはproposal分布からの標本&モデル誤差に頑健な基準；未知basinを救える&既得情報を利用しない\\
+Mean&最大予測平均&単純で活用が速い&探索せず局所解へ集中\\
+Variance&最大予測標準偏差&global model学習に明快&目的値の良さを無視\\
+PI&改善する確率&閉形式で軽い&改善量を無視；小改善へ集中し得る\\
+EI&改善量の期待値&活用と探索が一つの期待効用になる&incumbent/noise処理に注意；myopic\\
+UCB/LCB&楽観的な信頼境界&直感と理論解析が明快&\(\beta_t\)と校正に敏感；固定目的の保証に条件\\
+Thompson&posterior関数標本の最大点&自然なrandomness；並列化しやすい&joint function sampleとその最適化が必要\\
+KG&観測後の最大posterior meanの期待増分&他候補への情報波及，noise，有限budgetに自然&仮想posterior更新が高価\\
+ES/PES&最大位置についての情報利得&最適解同定を直接目指す&argmax分布・entropy近似が高価\\
+MES&最大値についての情報利得&ES/PESより低次元になりやすい&最大値分布の近似・sampleが必要\\
+EHVI&Pareto hypervolume期待増分&多目的改善を直接測る&目的数・batch数とともに高価；QDとは別目的\\
+Constrained&獲得価値\(\times\)feasibility&無効評価を避ける&制約確率の校正と独立近似に注意\\
+Cost-aware&単位コスト当たり価値&step budgetに整合&単純比が安価候補へ偏ることがある\\
+\bottomrule
+\end{longtable}
+\endgroup
+
+\begin{checkpointbox}
+\begin{enumerate}
+  \item EIとKGは「観測の将来価値」をどう違って測るか．
+  \item ES，PES，MESは何についての不確実性を減らすか．
+  \item batchで候補ごとの分散だけでなく候補間共分散が必要なのはなぜか．
+\end{enumerate}
+\textbf{答え：} EIは次観測自身の即時改善，KGは観測後のposterior mean全体の最終価値増加を見る．
+ES/PESは最大位置，MESは最大値についての情報を得る．候補が強く相関していれば同時評価が冗長になるため，batchではjoint covarianceが必要である．
+\end{checkpointbox}
+
+\section{今回の問題をarchive-aware Bayesian searchとして定式化する}
+\label{sec:archive-aware}
+
+\subsection{GPに学習させる対象と，毎回変わる価値を分ける}
+
+候補入力を
+\begin{equation}
+  \bm x=(\bm q,\Delta\bm q)
+\end{equation}
+とし，一回の摂動後に決定論的rolloutを行う．結果を
+\begin{equation}
+  F(\bm x)
+  =\bigl(R(\bm x),\bm Z(\bm x),C(\bm x)\bigr)
+  \label{eq:full-terminal-map}
+\end{equation}
+とまとめる．
+\begin{description}
+  \item[\(R\)] flat，collision，corrector failure，timeoutなどのstop reason．
+  \item[\(\bm Z\)] 平坦終端の連続descriptor．重なり順の判定に必要な量も含む．
+  \item[\(C\)] rolloutに消費したmechanics-stepなどの計算コスト．
+\end{description}
+
+rollout rule，衝突判定，入力の残余horizonが固定され，現在座標が将来を決める十分な状態なら，
+写像\(F\)自体は探索時刻によらない決定論的写像である．一方，時刻\(t\)のelite archiveを\(\A_t\)とすると
+\begin{equation}
+  G_t(\bm x)
+  =\ind[\text{flatかつ}\bm Z(\bm x)\text{が}\A_t\text{に対して新規}]
+  \label{eq:archive-dependent-reward}
+\end{equation}
+は\(\A_t\)の成長とともに変わる．同じ終端も，最初は新規，発見後は既存になる．
+
+\begin{applicationbox}[非定常性をどこに隔離するか]
+非定常な\(G_t\)を教師出力として直接回帰するのではなく，固定写像\(F\)を学習する．
+そのposterior predictionを現在の\(\A_t\)へ毎回照合し，獲得価値だけを更新する．
+これによりarchive成長による非定常性を，代理モデルから獲得関数側へ分離できる．
+\end{applicationbox}
+
+\subsection{多出力GPによる終端予測}
+
+平坦終端descriptorについて
+\begin{equation}
+  \bm Z(\bm x)\mid\D_t
+  \sim\N(\bm\mu_t(\bm x),\bm\Sigma_t(\bm x))
+  \label{eq:terminal-vector-gp}
+\end{equation}
+とする．\(R\)はGP classification，tree ensemble，またはlatent marginのGPで別に予測し，
+\begin{equation}
+  p_{\mathrm{flat},t}(\bm x)
+  =\Pp(R(\bm x)=\mathrm{flat}\mid\D_t)
+\end{equation}
+を得る．costは\(\log C\)などをscalar GPで回帰できる．
+
+collisionやfailureに対して平坦終端descriptorが定義されないなら，それらを無理に同じ連続回帰へ入れない．
+まずstop reasonを分け，flatである条件の下でdescriptorを回帰するmixture構造が自然である．
+
+\section{提案したnovelty-UCBの導出}
+\label{sec:novelty-ucb}
+
+\subsection{archiveまでの重み付き距離}
+
+既存elite descriptor集合を\(A_t=\{\bm e_1,\ldots,\bm e_M\}\)とし，
+\begin{equation}
+  d_{A_t}(\bm z)
+  =\min_{\bm e\in A_t}\|\bm z-\bm e\|_W,
+  \qquad
+  \|\bm v\|_W=\sqrt{\bm v^\T\bm W\bm v}
+  \label{eq:archive-distance}
+\end{equation}
+と定義する．\(\bm W\succ0\)はdescriptor成分の正規化・重要度を表す．
+
+\subsection{距離関数が1-Lipschitzであることの証明}
+
+任意の\(\bm z,\bm z'\)を考え，\(\bm z'\)に最も近いeliteを\(\bm e'\)とする．
+三角不等式から
+\begin{align}
+  d_A(\bm z)
+  &\leq\|\bm z-\bm e'\|_W\notag\\
+  &\leq\|\bm z-\bm z'\|_W+\|\bm z'-\bm e'\|_W\notag\\
+  &=\|\bm z-\bm z'\|_W+d_A(\bm z').
+\end{align}
+したがって
+\begin{equation}
+  d_A(\bm z)-d_A(\bm z')\leq\|\bm z-\bm z'\|_W.
+\end{equation}
+\(\bm z,\bm z'\)を入れ替えた不等式も成り立つので
+\begin{equation}
+  \boxed{
+  |d_A(\bm z)-d_A(\bm z')|
+  \leq\|\bm z-\bm z'\|_W.}
+  \label{eq:archive-distance-lipschitz}
+\end{equation}
+これが1-Lipschitz性である．入力の小さな変化ではなく，\emph{descriptor出力の小さな変化}に対する性質である．
+
+\subsection{多変量正規分布の信頼楕円}
+
+予測誤差を\(\bm\delta=\bm Z-\bm\mu_t\)とする．\(\bm\Sigma_t\succ0\)なら
+\begin{equation}
+  \bm\delta^\T\bm\Sigma_t^{-1}\bm\delta
+  \sim\chi_p^2.
+  \label{eq:mahalanobis-chi-square}
+\end{equation}
+したがって，一つの固定候補における\((1-\alpha)\)のBayesian posterior信用楕円は
+\begin{equation}
+  \mathcal E_t(\bm x)
+  =\left\{\bm z:
+  (\bm z-\bm\mu_t)^\T\bm\Sigma_t^{-1}
+  (\bm z-\bm\mu_t)
+  \leq\beta
+  \right\},
+  \quad
+  \beta=\chi^2_{p,1-\alpha}.
+  \label{eq:confidence-ellipsoid}
+\end{equation}
+\(\chi^2_{p,1-\alpha}\)は自由度\(p\)のchi-square分布の分位点である．
+このとき，固定した\(\bm x\)に対して
+\begin{equation}
+  \Pp\!\left(\bm Z(\bm x)\in\mathcal E_t(\bm x)\mid\D_t\right)=1-\alpha
+\end{equation}
+である．これは「採用したGPモデルの事後分布のもとで」というBayesianな主張であり，
+固定された真の関数に対するfrequentist coverageを自動的に保証するものではない．
+複数候補・複数時刻を同時に覆うGP-UCB型の保証には，well-specified GPまたはRKHS仮定，
+noise仮定，候補集合に応じた\(\beta_t\)の設定が別途必要である．
+
+\subsection{信頼楕円を一つの重み付き半径へ変える}
+
+楕円内で最も大きい\(W\)-norm誤差を求める．
+\(\bm\delta=\bm\Sigma_t^{1/2}\bm u\)と置けば楕円制約は\(\|\bm u\|_2^2\leq\beta\)となり，
+\begin{align}
+  \|\bm\delta\|_W^2
+  &=\bm u^\T\bm\Sigma_t^{1/2}\bm W\bm\Sigma_t^{1/2}\bm u\notag\\
+  &\leq\beta\,
+  \lambda_{\max}(\bm\Sigma_t^{1/2}\bm W\bm\Sigma_t^{1/2}).
+  \label{eq:ellipsoid-radius-derivation}
+\end{align}
+よって
+\begin{equation}
+  \boxed{
+  r_t^{\mathrm{eig}}(\bm x)
+  =\sqrt{\beta_t\,
+  \lambda_{\max}\left(
+  \bm\Sigma_t(\bm x)^{1/2}
+  \bm W
+  \bm\Sigma_t(\bm x)^{1/2}
+  \right)}.}
+  \label{eq:eigen-confidence-radius}
+\end{equation}
+非零固有値の関係から，\(\bm W^{1/2}\bm\Sigma_t\bm W^{1/2}\)を用いても同じ最大固有値を得る．
+
+\subsection{trace半径との違い}
+
+前節で
+\begin{equation}
+  \E[\|\bm Z-\bm\mu_t\|_W^2]
+  =\tr(\bm W\bm\Sigma_t)
+\end{equation}
+を示した．したがって
+\begin{equation}
+  r_t^{\mathrm{trace}}
+  =\sqrt{\beta_t\tr(\bm W\bm\Sigma_t)}
+  \label{eq:trace-radius}
+\end{equation}
+は，\(\beta_t=1\)ならRMS uncertainty scaleを表す．さらに半正定値行列について
+\begin{equation}
+  \lambda_{\max}(\bm\Sigma^{1/2}\bm W\bm\Sigma^{1/2})
+  \leq\tr(\bm W\bm\Sigma)
+\end{equation}
+なので，同じ信頼楕円の\(\beta_t\)を使えばtrace式は固有値式より保守的な外接半径になる．
+
+\begin{cautionbox}[「traceを使えば多出力共分散を使った」とは限らない]
+\(\bm W=\I\)または対角なら，\(\tr(\bm W\bm\Sigma)\)は主に対角分散の加重和であり，
+非対角共分散が作る楕円の向きを区別しない．固有値式は最大に広がる方向を使う．
+ただし固有値式も楕円を球へ膨らませるため保守的である．
+複雑なcell境界には，後述するposterior samplingが最も直接的である．
+\end{cautionbox}
+
+\subsection{距離の上下信頼境界}
+
+信頼事象上で\(\|\bm Z-\bm\mu_t\|_W\leq r_t\)なら，
+1-Lipschitz性\eqref{eq:archive-distance-lipschitz}から
+\begin{equation}
+  \boxed{
+  d_{A_t}(\bm\mu_t)-r_t
+  \leq d_{A_t}(\bm Z)
+  \leq d_{A_t}(\bm\mu_t)+r_t.}
+  \label{eq:novelty-distance-bounds}
+\end{equation}
+従って
+\begin{equation}
+  \boxed{
+  \alpha_{\mathrm{nov-UCB},t}(\bm x)
+  =d_{A_t}(\bm\mu_t(\bm x))+r_t(\bm x)}
+  \label{eq:novelty-ucb}
+\end{equation}
+は，信頼領域内で実現し得るnovelty distanceの楽観的上界である．
+
+\begin{description}
+  \item[\(d_A(\bm\mu_t)\)] 平均予測が既存eliteから遠い候補を活用する．
+  \item[\(r_t\)] kernel posteriorで不確実な候補を探索する．
+\end{description}
+
+以下の二つの含意は，archive cellが単一の\(W\)-norm距離閾値
+\(\delta_{\mathrm{cell}}\)だけで定義される場合に限られる．その場合
+\begin{align}
+  d_A(\bm\mu_t)-r_t>\delta_{\mathrm{cell}}
+  &\Rightarrow\text{信頼領域全体が既存cell外},\\
+  d_A(\bm\mu_t)+r_t\leq\delta_{\mathrm{cell}}
+  &\Rightarrow\text{信頼領域全体が既存cell内},
+\end{align}
+と判定できる．中間は，既存か新規かが不確実な探索候補である．
+実際のarchiveがRMS距離と最大距離の併用，重なり順のような離散key，あるいは複雑な
+\code{archive\_check}を使う場合，このcell判定保証はそのまま成立しない．
+その場合でも連続距離の上界としては使えるが，新規cell確率は
+第\ref{sec:posterior-archive-sampling}節のposterior samplingで評価する方が一貫している．
+
+\begin{intuitionbox}[提案式の数学的に強い部分]
+「平均距離+不確実性半径」は単なる思いつきではない．
+\(d_A\)の1-Lipschitz性とGPの同時信頼領域が正しければ，novelty distanceの上界である．
+ただし，これは各時刻での距離上界であり，archiveが変わる発見報酬に対する
+standard GP-UCBのregret保証そのものではない．
+\end{intuitionbox}
+
+\subsection{flatnessをどう組み込むか}
+
+ユーザー案の「平坦に近いほど高score」には二通りある．
+
+\paragraph{終端種別の確率制約}
+flat/collisionを分類し
+\begin{equation}
+  \alpha_t(\bm x)
+  =p_{\mathrm{flat},t}(\bm x)
+  \left[d_A(\bm\mu_t(\bm x))+r_t(\bm x)\right]
+  \label{eq:flat-weighted-novelty-ucb}
+\end{equation}
+とする．コストを考慮すれば
+\begin{equation}
+  \alpha_t^{\mathrm{cost}}(\bm x)
+  =\frac{p_{\mathrm{flat},t}(\bm x)
+  [d_A(\bm\mu_t)+r_t]}
+  {\E[C(\bm x)\mid\D_t]+\varepsilon}.
+  \label{eq:cost-flat-novelty-ucb}
+\end{equation}
+これはflat確率で重み付けした実用的なscoreであり，
+一般に\(\mathbf 1[R=\mathrm{flat}]d_A(\bm Z)\)そのものの厳密なUCBではない．
+特に\(\bm Z\)のGPをflat結果だけで条件付けて学習するなら，
+前節の距離上界も「flatであるという条件のもとでの終端descriptor」に対する上界である．
+
+\paragraph{連続flatness residual}
+平坦ほど小さい\(h(\bm x)\geq0\)をGPで予測し，閾値\(\epsilon_{\mathrm{flat}}\)に対し
+\begin{equation}
+  \Pp(h(\bm x)\leq\epsilon_{\mathrm{flat}}\mid\D_t)
+  =\Phi\left(
+  \frac{\epsilon_{\mathrm{flat}}-\mu_h(\bm x)}{\sigma_h(\bm x)}
+  \right)
+  \label{eq:flatness-probability}
+\end{equation}
+を掛ける．ただし全flat rolloutが停止閾値付近でほぼ同じ\(h\)を持つなら，
+「より平坦」は品質差にならず，flat到達確率とcostだけで十分である．
+
+\section{posterior samplingでarchive判定を直接伝播する}
+\label{sec:posterior-archive-sampling}
+
+\subsection{平均距離だけでは実在しない中間形状を好み得る}
+
+真の終端写像がbasinごとにほぼ一定で，境界で不連続だとする．教師出力が\(-1\)と\(+1\)しかなくても，
+滑らかなGPは境界で平均0を返し得る．archiveに\(-1,+1\)があれば，0は両方から遠いため
+\(d_A(\mu)\)が大きい．しかし真のrolloutが0へ到達するとは限らない．
+
+この問題はposterior meanが「最もありそうな実在終端」という保証を持たないことから生じる．
+Gaussian posterior全体から終端をsampleし，実際のarchive ruleを各sampleへ適用する方が自然である．
+ただしsamplingが行うのは，\emph{校正された事後不確実性を非線形なarchive判定へ伝播すること}である．
+単一の滑らかなGaussian GPがbasin境界で誤って小分散を持ち，非物理的な中間値を確信しているなら，
+そのsampleも同じ中間値付近に集中し，モデル誤指定は解決しない．その場合はtreed GP，
+mixture surrogate，局所modelなど，境界や多峰性を表現できるmodelが別途必要になる．
+
+\subsection{新規cell確率}
+
+候補ごとに\(M\)個のposterior sample
+\begin{equation}
+  (R^{(m)},\bm Z^{(m)},C^{(m)})
+  \sim p(R,\bm Z,C\mid\bm x,\D_t)
+\end{equation}
+を生成する．現在の実装と同じ\code{archive\_check}を通し
+\begin{equation}
+  \boxed{
+  \widehat P_{\mathrm{new},t}(\bm x)
+  =\frac1M\sum_{m=1}^M
+  \ind[R^{(m)}=\mathrm{flat}]
+  \ind[\operatorname{archive\_check}(A_t,\bm Z^{(m)})=\mathrm{new}].}
+  \label{eq:mc-new-cell-probability}
+\end{equation}
+これは連続shape distance，RMS/max threshold，重なり順keyなどの非線形・離散判定をそのまま反映する．
+
+\subsection{Expected Archive Improvement}
+
+新規cellだけでなく，同一cellの最短経路更新も価値に含めたいなら，一sampleの効用を
+\begin{align}
+  G_t^{(m)}(\bm x)
+  =\ind[R^{(m)}=\mathrm{flat}]\bigg(&
+  \ind[\mathrm{new}]\notag\\
+  &+\eta\,\ind[\mathrm{existing}]
+  \max\left(0,
+  \frac{L_{\mathrm{elite}}-L_{\mathrm{cand}}^{(m)}}{L_{\mathrm{scale}}}
+  \right)\bigg)
+  \label{eq:archive-sample-utility}
+\end{align}
+と定義できる．その標本平均
+\begin{equation}
+  \alpha_{\mathrm{EAI},t}(\bm x)
+  =\bar G_t(\bm x)=\frac1M\sum_{m=1}^M G_t^{(m)}(\bm x)
+  \label{eq:expected-archive-improvement}
+\end{equation}
+はExpected Archive Improvementであり，EIのarchive版と解釈できる．
+
+標本標準偏差\(s_{G,t}\)も使うなら
+\begin{equation}
+  \alpha_{\mathrm{AUCB},t}(\bm x)
+  =\bar G_t(\bm x)+\kappa s_{G,t}(\bm x)
+  \label{eq:archive-utility-ucb}
+\end{equation}
+というarchive utility UCBを作れる．cost-aware版は分母に\(\E[C]+\varepsilon\)を置く．
+ただし，\(\bar G+\kappa s_G\)はposterior標本の平均と標準偏差を用いた
+\emph{archive utility optimistic score}であり，通常のGP-UCBと同じ保証を持つとは限らない．
+確率的な上側境界として直接解釈したい場合は，標本効用の
+\((1-\alpha)\)経験分位点を獲得関数に用いる方が明確である．
+
+\begin{cautionbox}[Bernoulli分散だけでは未知basinを救えない]
+新規cell eventをBernoulliとみなすと，既知の\(P_{\mathrm{new}}\)に対する分散は
+\(P_{\mathrm{new}}(1-P_{\mathrm{new}})\)である．モデルがOOD領域を誤って
+\(P_{\mathrm{new}}\approx0\)と確信すれば，この分散も0になり選ばれない．
+入力空間のGP varianceまたは情報利得枠と，完全random枠を独立に残す必要がある．
+\end{cautionbox}
+
+\subsection{単一scoreよりquota制が解釈しやすい場合}
+
+一batchを例えば次のように分けられる．
+\begin{enumerate}
+  \item \(\widehat P_{\mathrm{new}}/\E[C]\)最大：archive拡張の活用．
+  \item descriptor GPのinformation gainまたは信頼半径最大：代理モデルの探索．
+  \item perturbation countとpotential progressで層別したrandom：モデル誤りへの保険．
+\end{enumerate}
+一つの重み付き和より，各役割へ何rollout使ったかを論文で説明しやすい．
+
+\section{理論的に言えること・言えないこと}
+\label{sec:theoretical-scope}
+
+\subsection{各時刻の上界として言えること}
+
+次が成り立つと仮定する．
+\begin{enumerate}
+  \item 真の終端descriptor写像\(\bm Z(\bm x)\)が固定されている．
+  \item GPの信頼領域が，対象候補で真の\(\bm Z(\bm x)\)を覆う．
+  \item archive distanceが式\eqref{eq:archive-distance}の\(W\)-norm距離である．
+\end{enumerate}
+このとき，archive \(A_t\)が毎回変わっても，その時刻の
+\begin{equation}
+  d_{A_t}(\bm Z(\bm x))
+  \leq d_{A_t}(\bm\mu_t(\bm x))+r_t(\bm x)
+\end{equation}
+は成り立つ．archive更新後には距離を新しい\(A_{t+1}\)で再計算すればよい．
+
+\subsection{standard GP-UCBのregret保証をそのまま移せない理由}
+
+GP-UCBの典型的解析は，固定したscalar reward function\(f(\bm x)\)を繰り返し最大化し，
+regretを測る\citep{srinivas2010gpucb}．今回の即時価値
+\begin{equation}
+  g_t(\bm x)=d_{A_t}(\bm Z(\bm x))
+\end{equation}
+または新規cell indicatorは\(A_t\)に依存して変わり，不連続でもある．
+よってstandard GP-UCBのno-regret定理から「有限予算で全cellを発見する」とは言えない．
+
+正確な表現は
+\begin{quote}
+固定された物理終端写像をGPでモデル化し，現在archiveに対するnoveltyの楽観的上界を
+毎時刻構成するarchive-aware, GP-UCB-inspired acquisition
+\end{quote}
+である．
+
+\subsection{random探索を残したときの限定的なcoverage}
+
+各時刻にrandom枠を確率\(\epsilon_t>0\)で残し，
+\(\sum_t\epsilon_t=\infty\)とする．さらに，random drawが時刻間で独立であるか，
+少なくとも過去の履歴で条件付けても各到達可能basinを選ぶ確率に正の下限があり，
+proposal分布が各basinに正の確率質量を持つと仮定する．
+このとき無限時間極限では，各正測度basinを繰り返しsampleする可能性を保てる．
+これはsurrogateの誤予測で領域が永久除外されることを防ぐ条件である．
+しかし有限step予算での全発見保証ではない．basinがmeasure zeroまたはproposal support外なら発見できない．
+
+\subsection{Monte Carlo Elitesとの関係}
+
+Monte Carlo Elitesは親\(i\)の選択回数\(n_i\)と，offspringがarchiveで生存した回数\(w_i\)から
+\begin{equation}
+  U(i)=\frac{w_i}{n_i}
+  +\lambda\sqrt{\frac{\log N_s}{n_i}}
+  \label{eq:mce-score}
+\end{equation}
+を作る\citep{sfikas2021mce}．これは過去の親成功率をarm統計として扱う．
+今回のGP acquisitionは\((\bm q,\Delta\bm q)\)という連続入力間でkernel相関を共有し，
+終端descriptorの予測分布を現在archiveへ外部照合する．したがってMCEより
+GP-UCB，SAIL\citep{gaier2018sail}，BOP-Elites\citep{kent2024bopelites}に近い．
+
+\section{five-bar linkageへ適用する設計}
+\label{sec:fivebar-design}
+
+\subsection{30次元raw inputをそのまま使う前に}
+
+5節点の三次元座標15成分と節点変位15成分を連結すれば30次元になる．
+ただし固定自由度や拘束により，実際に変化する自由度ははるかに少ない．
+高次元のEuclid距離は近傍関係を失いやすく，少数教師でARD length scaleを学ぶのも難しい．
+
+比較すべき入力表現は次である．
+\begin{enumerate}
+  \item raw 30次元を正規化した表現．baselineとして残す．
+  \item 固定・常時不変の成分を除いたactive coordinate表現．
+  \item 三つの折角と，その摂動による角度変化などのintrinsic表現．
+  \item 学習済みhistoryに対するPCA/active subspace表現．
+\end{enumerate}
+角度の周期境界をまたぐなら，\(\theta\)を直接使う代わりに
+\begin{equation}
+  (\sin\theta,\cos\theta)
+\end{equation}
+とするか周期カーネルを使う．
+
+\subsection{推奨する最初のGP構成}
+
+\begin{enumerate}
+  \item 状態blockと変位blockを別々の尺度で標準化する．
+  \item Mat\'{e}rn \(3/2\) kernelを基本とし，状態と摂動の積kernel
+  \(k_s k_a\)も比較する．
+  \item stop reasonは分類，flat時terminal descriptorは回帰，\(\log C\)は別回帰にする．
+  \item 出力はまず独立GPをbaselineとし，次にoutput PCAで共分散を復元する．
+  \item 小さいjitterを入れ，length scaleの範囲を物理尺度に基づき制約する．
+\end{enumerate}
+
+\subsection{複数摂動経路との関係}
+
+一つの教師sampleは
+\begin{quote}
+現在stateに一回摂動を与え，その後は決定論的に終端までrolloutする
+\end{quote}
+という固定mappingを学習する．以前の摂動によって作られた子孫stateを後で親として選べば，
+最終経路には複数の摂動が累積する．状態座標がMarkov sufficientなら，過去の摂動回数はGP入力に不要であり，
+候補親をperturbation countとpotential progressで層別する探索配分にだけ使える．
+
+接触履歴，塑性，摩擦，重なり履歴など，現在座標が同じでも将来rolloutが変わる要因があるなら，
+座標だけではMarkovでない．その離散・履歴状態も入力に含めなければ，固定写像を学習していることにならない．
+
+\subsection{basin境界の不連続性}
+
+一つの滑らかなstationary GPは，異なる終端basinの間を平均しやすい．次の順で複雑化する．
+\begin{enumerate}
+  \item Mat\'{e}rn kernel + stop classifier + posterior calibrationを確認する．
+  \item 局所kNN/ExtraTreesを強いbaselineとして比較する．
+  \item 入力空間を分割するtreed GP\citep{gramacy2008treedgp}またはmixture of local GPsを検討する．
+  \item 各basinの教師数が十分になってから，gating classifier + basin別regressorへ進む．
+\end{enumerate}
+モデルを複雑にしても，教師に一度も触れていないbasinの存在を教師あり学習だけで確定することはできない．
+random/information探索は残す．
+
+\subsection{実装する探索loop}
+
+\begin{enumerate}
+  \item rootおよび層別historyから初期rolloutを行い，\(\D_0\)とarchive \(A_0\)を作る．
+  \item stop classifier，terminal descriptor GP，cost GPを学習する．
+  \item perturbation count\(\times\)potential progressで親候補を層別sampleする．
+  \item 各親に複数の節点変位候補を生成する．この段階では厳密corrector前でもよい．
+  \item 各\((\bm q,\Delta\bm q)\)に対しposteriorを予測し，
+  EAI，information，randomの各quotaで候補を選ぶ．
+  \item 選択候補だけcorrectorと実rolloutを行う．
+  \item 新しい終端をarchiveへ登録し，教師データを追加して再学習する．
+  \item 総mechanics-step予算で停止する．
+\end{enumerate}
+
+\subsection{代理モデル自体の評価を探索性能と分ける}
+
+最終cell数だけでは，獲得関数が良いのか偶然かを診断できない．次を記録する．
+\begin{description}
+  \item[探索性能] 最終unique cell数，discovery AUC，cell到達step，step/new cell，wall time．
+  \item[回帰性能] flat終端descriptor RMSE，予測区間coverage，負の対数予測密度．
+  \item[分類性能] flat/collisionのBrier score，reliability diagram，PR-AUC．
+  \item[獲得校正] 予測\(P_{\mathrm{new}}\)と実発見率のreliability，quota別発見率．
+  \item[複数摂動機構] elite代表経路の摂動回数，親の摂動回数別new-cell yield．
+\end{description}
+guidedに選ばれたデータだけで予測精度を評価するとselection biasが入るため，
+random quotaのrolloutを監査用にも集計する．
+
+\section{どの獲得関数から試すべきか}
+\label{sec:recommendation}
+
+今回の目的は単一最大値でなく，archiveの新規cell追加と代表最短経路更新である．
+従って，次の順が比較しやすい．
+
+\begin{enumerate}
+  \item \textbf{層別random：} surrogateなしの必須baseline．
+  \item \textbf{novelty-UCB：} 式\eqref{eq:novelty-ucb}．提案の直感とLipschitz上界を直接検証できる．
+  \item \textbf{posterior EAI：} 式\eqref{eq:expected-archive-improvement}．実際のcell判定をsampleへ適用する本命．
+  \item \textbf{archive Thompson：} terminal mapを一つsampleし，そのsample上のarchive utility最大候補を選ぶ．
+  \item \textbf{information quota：} descriptor posterior entropyまたは信頼半径最大候補を別枠で選ぶ．
+\end{enumerate}
+
+全条件で，同じwarmup，親候補集合，摂動proposal，候補数，random比率，mechanics-step予算を固定する．
+そうすれば「多摂動候補集合の効果」と「GP獲得関数による選択圧」を分離できる．
+
+\begin{applicationbox}[最終的な推奨]
+提案された
+\begin{equation*}
+  d_A(\bm\mu_t)+r_t
+\end{equation*}
+は，平均予測のarchive距離と多出力不確実性を結ぶ明快な第一手法である．
+ただし実装の最終候補としては，flat/collisionと重なり順を含む実際のarchive判定が非線形なので，
+joint posterior sampleから\(P_{\mathrm{new}}\)またはExpected Archive Improvementを計算する方が目的に忠実である．
+novelty-UCB，posterior EAI，randomを同一候補poolで比較するのが筋である．
+\end{applicationbox}
+
+\section{式を読み返すための要約}
+\label{sec:formula-summary}
+
+\subsection{確率とGPR}
+
+\begin{align}
+  \Var[X]&=\E[(X-\E[X])^2],\\
+  \Cov[X,Y]&=\E[(X-\E[X])(Y-\E[Y])],\\
+  k(\bm x,\bm x')&=\Cov[f(\bm x),f(\bm x')],\\
+  \mu_*&=m_*+\bm k_*^\T(\bm K+\sigma_n^2\I)^{-1}(\bm y-\bm m_X),\\
+  \sigma_*^2&=k_{**}-\bm k_*^\T(\bm K+\sigma_n^2\I)^{-1}\bm k_*.
+\end{align}
+
+\subsection{代表的獲得関数}
+
+最大化問題で\(z=(\mu-f^+-\xi)/\sigma\)とする．
+\begin{align}
+  \mathrm{PI}(\bm x)&=\Phi(z),\\
+  \mathrm{EI}(\bm x)&=(\mu-f^+-\xi)\Phi(z)+\sigma\phi(z),\\
+  \mathrm{UCB}_t(\bm x)&=\mu_t(\bm x)+\sqrt{\beta_t}\sigma_t(\bm x),\\
+  \mathrm{KG}_t(\bm x)
+  &=\E_{Y_{\bm x}}[\max_{\bm x'}\mu_{t+1}(\bm x')]-\max_{\bm x'}\mu_t(\bm x'),\\
+  \mathrm{ES}_t(\bm x)&=I(Y_{\bm x};\bm x^*\mid\D_t),\\
+  \mathrm{MES}_t(\bm x)&=I(Y_{\bm x};f^*\mid\D_t).
+\end{align}
+
+\subsection{多出力とarchive}
+
+\begin{align}
+  \bm Z(\bm x)\mid\D_t
+  &\sim\N(\bm\mu_t(\bm x),\bm\Sigma_t(\bm x)),\\
+  \E[\|\bm Z-\bm\mu\|_W^2]
+  &=\tr(\bm W\bm\Sigma),\\
+  r_t^{\mathrm{eig}}
+  &=\sqrt{\beta_t\lambda_{\max}(\bm\Sigma_t^{1/2}\bm W\bm\Sigma_t^{1/2})},\\
+  \mathrm{novUCB}_t(\bm x)
+  &=d_{A_t}(\bm\mu_t(\bm x))+r_t(\bm x),\\
+  \widehat P_{\mathrm{new},t}(\bm x)
+  &=\frac1M\sum_m\ind[R^{(m)}=\mathrm{flat}]
+  \ind[\operatorname{archive\_check}(A_t,\bm Z^{(m)})=\mathrm{new}].
+\end{align}
+
+\section{理解確認問題}
+\label{sec:exercises}
+
+\begin{enumerate}
+  \item \(X\)の単位がmのとき，\(\Var[X]\)と\(\operatorname{SD}[X]\)の単位を答えよ．
+  \item \(\Cov[X,Y]=0\)なら必ず独立か．多変量正規分布の場合はどうか．
+  \item カーネル行列が半正定値でなければならない理由を，線形和の分散で説明せよ．
+  \item GPRの事後分散が，固定ハイパーパラメータの下で観測値\(\bm y\)を含まない理由を説明せよ．
+  \item \(\sigma_*^2\)と\(\sigma_*^2+\sigma_n^2\)はそれぞれ何の分散か．
+  \item 独立なmulti-output GPでは，出力共分散行列のどの成分が欠けるか．
+  \item PIが小さな確実改善へ偏り得る理由と，EIが何を追加したかを説明せよ．
+  \item Thompson samplingで候補ごとに独立sampleしてはいけない理由を説明せよ．
+  \item UCBの一点分位点と全候補・全時刻の同時信頼境界の違いを説明せよ．
+  \item \(d_A\)が1-Lipschitzである証明に用いた不等式は何か．
+  \item trace uncertaintyと最大固有値半径は，楕円のどの情報を使う点で異なるか．
+  \item archiveが更新されても，終端descriptor回帰自体を定常とみなせる条件を答えよ．
+  \item novelty-UCBの標準GP-UCB regret保証をそのまま主張できない理由を答えよ．
+\end{enumerate}
+
+\subsection*{解答の要点}
+
+\begin{enumerate}
+  \item 分散は\(\mathrm{m}^2\)，標準偏差はm．
+  \item 一般には独立でない．同時正規の場合は無相関なら独立．
+  \item \(\bm c^\T\bm K\bm c=\Var(\sum_i c_if_i)\geq0\)でなければならない．
+  \item 条件付き正規分布の共分散は元の共分散blockだけで決まるため．ただしLML再学習を介した間接依存はある．
+  \item 前者は潜在関数，後者は新しいnoise付き観測の予測分散．
+  \item 非対角の出力間共分散．
+  \item PIは改善量を区別しない．EIは正の改善量の期待値を積分する．
+  \item 近い候補間のposterior covarianceを壊し，関数として整合しない標本になるため．
+  \item 一点分位点を多数点・多数時刻に同時適用すると被覆確率が下がる．\(\beta_t\)で多重性を調整する．
+  \item 三角不等式．
+  \item traceは総RMS scale，最大固有値は共分散楕円が最も広がる方向を使う．
+  \item rollout ruleとhorizonが固定され，現在stateがMarkov sufficientであること．
+  \item 報酬が固定scalar functionでなく，変化するarchiveに依存するため．
+\end{enumerate}
+
+\section{おわりに}
+
+GPRの核心は，カーネルによって訓練点と未知点の関数値へ同時正規分布を置き，
+観測した訓練値で条件付けることである．予測平均は観測から修正された最良推定，
+予測共分散は選んだmodel assumptionの下で残っている不確実性を表す．
+獲得関数はその分布を次の高価な評価へ変換する意思決定則であり，PI，EI，UCB，Thompson sampling，
+KG，entropy searchはそれぞれ異なる「次の一回の価値」を定義する．
+
+多様な平坦折り終端の探索では，単一目的値の最大化より，終端descriptorの固定写像を学習し，
+現在archiveへの追加・更新価値を毎回外部計算する方が問題構造に合う．
+提案したnovelty-UCBはLipschitz距離上界として説明できる一方，
+実在しない平均終端，離散重なり順，collisionを扱うにはposterior samplingによるarchive判定が重要である．
+理論的に説明できる上界と，有限予算で実証すべき探索性能を分けて研究を進めることが必要である．
+
+\begingroup
+\small
+\setlength{\bibsep}{0.15\baselineskip}
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+\endgroup
+
+\end{document}
