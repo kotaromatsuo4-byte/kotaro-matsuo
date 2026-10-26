@@ -294,3 +294,49 @@ a\sim\pi_\theta(a\mid s)
 - 探索方策：uniform/space-filling RRT、strain-aware T-RRT、手設計heuristic bias、学習したRL policy。
 - RLを採用する場合の仮説：同一問題の複数試行の経験から、未訪問だが類似したstateにも有望方向を一般化し、有限予算での初回成功率・初回発見時間を改善できる。
 - 学習費用は探索予算に含める。RLが単一問題で有利かは未実証であり、比較実験で確認する。
+
+
+## 2026-10-26：途中state再始動型RLとprefixへの価値伝播
+
+**本人の方針**
+
+SACへの全面移行は、既存off-policy手法を適用してsample efficiencyを上げるだけで研究の本質ではないため一旦保留する。代わりに、過去に到達したstateを明示的に保存し、毎episodeをrootからやり直さず、有望な途中stateから再始動することで、RRTのexplicit state memoryとRLのlearned policyの中間的な探索法を検討する。
+
+**本人の疑問**
+
+途中state (s_k) から現在policyでsuffixを探索して新しい報酬を得た場合、昔のpolicyで生成した (x_0\to s_k) のprefixをどう評価・学習すべきか。
+
+**ChatGPTの整理**
+
+checkpointから現在policyで生成したsuffixはon-policyなので、そのsuffixのActor更新にはそのまま使える。一方、保存済みprefixのactionは旧policyで生成されているため、新しいsuffix rewardを現在policyのpolicy-gradientとして直接流すのはoff-policyになり、補正なしでは不適切。
+
+基本案はprefixとsuffixを分離する。
+
+1. archive-start rolloutで、checkpoint (s_k) 以降を現在policyで探索し、Actorはsuffixだけをon-policy更新する。
+2. 同時にCriticへcheckpointの価値 (V(s_k)) を学習させる。
+3. root-start rolloutも一定割合残し、現在policyでroot側から再訪したstateに対して
+   [
+   V(s_t)\approx r_t+\gamma V(s_{t+1})
+   ]
+   のTD bootstrapを使うことで、checkpointで得た価値をroot側へ徐々に伝播する。
+4. 保存prefixはActorのpolicy-gradient教師には直接使わない。成功path全体が得られた場合は、必要なら別途behavior cloning的な補助教師として扱う案はあるが、これは別の学習則。
+
+この設計では、archiveは到達済みstateとprefix pathをexplicit memoryとして保持し、Actor/Criticはstateから有望方向・価値をfunction approximationで学ぶ。RRTのようなtree memoryとRLのpolicy generalizationを組み合わせる中間形になる。
+
+**重要な状態設計**
+
+低strain pathでは、同じ形状 (x) でもそこまでのprefixで経験した最大strainが異なれば価値が異なる。そのためcheckpointには少なくとも
+
+[
+B_t=\max_{k\le t}\varepsilon(x_k)
+]
+
+を保持し、必要ならRL stateも (s_t=(x_t,B_t,\ldots)) としてMarkov性を保つ。自己接触・重なり順など、将来の遷移可能性に履歴依存性がある場合も同様に必要情報をstateへ含めるか、同一形状でも別checkpointとして扱う。
+
+**未決事項**
+
+- archiveからどのstateを再始動点として選ぶか。
+- root-startとarchive-startの割合を固定するか適応的にするか。
+- CriticをMonte Carlo (V(s)) のまま使うか、TD/GAEへ変更して価値伝播を速めるか。
+- 保存prefixをbehavior cloning等で補助利用するか。
+- この方式をGo-Explore、restart-distribution/curriculum RL、tree-guided RL等の既往とどう差別化するか。
