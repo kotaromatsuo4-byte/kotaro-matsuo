@@ -13,9 +13,9 @@
 
 本人が現在重視している条件は次の通り。
 
-- 初期形状 \(x_0\) は与える。
-- 具体的な目的節点座標 \(x_T\) は与えない。
-- 終状態には平坦性と、必要に応じて広がり \(D^*\) などの性質を指定する。
+- 初期形状 $x_0$ は与える。
+- 具体的な目的節点座標 $x_T$ は与えない。
+- 終状態には平坦性と、必要に応じて広がり $D^*$ などの性質を指定する。
 - 初期形状から終状態までの経路は連続であること。
 - 自己交差などの不適切な状態を避けること。
 - 今後は弾性変形・ひずみを許容する物理モデルを扱う。
@@ -24,11 +24,11 @@
 
 「選択的に平坦状態を探す」とは、具体的な終点座標を指定することではなく、
 
-\[
+$$
 F(x_T)\le \varepsilon_F,
 \qquad
 |D(x_T)-D^*|\le \varepsilon_D
-\]
+$$
 
 のように、**終状態の性質だけを指定して、その条件を満たす未知の形状を探す**ことを指す。
 
@@ -86,9 +86,9 @@ F(x_T)\le \varepsilon_F,
 
 RLに期待する本質は、
 
-\[
+$$
 a\sim\pi_\theta(a\mid s)
-\]
+$$
 
 として、同じ問題内の過去rolloutから、
 
@@ -98,27 +98,27 @@ a\sim\pi_\theta(a\mid s)
 
 RRTの主な探索圧は、Voronoi bias等による
 
-\[
+$$
 \boxed{\text{未探索領域へのspace-filling}}
-\]
+$$
 
 である。
 
 RLでは、
 
-\[
+$$
 \boxed{\text{将来成功しそうな方向へのstate-dependent bias}}
-\]
+$$
 
 を学習できる可能性がある。
 
 特に意味があるのは、現在のflatnessをただ改善する方向ではなく、
 
-\[
+$$
 \text{一時的なflatness/strain悪化}
 \rightarrow
 \text{最終的な成功}
-\]
+$$
 
 という長期的関係をreturn/valueから学習する場合。
 
@@ -140,23 +140,23 @@ RLでは、
 
 例えば一度、
 
-\[
+$$
 x_0\rightarrow x_1\rightarrow x_2
-\]
+$$
 
-までかなり有望に進んだ後に失敗しても、Pure RLでは次episodeにまた \(x_0\) から開始する。
+までかなり有望に進んだ後に失敗しても、Pure RLでは次episodeにまた $x_0$ から開始する。
 
-RRTなら \(x_2\) がtreeに残るため、
+RRTなら $x_2$ がtreeに残るため、
 
-\[
+$$
 x_2\rightarrow A
-\]
+$$
 
 が失敗した後、
 
-\[
+$$
 x_2\rightarrow B
-\]
+$$
 
 を試せる。
 
@@ -166,15 +166,15 @@ x_2\rightarrow B
 
 過去に実際に到達したstateをarchiveし、
 
-\[
+$$
 \mathcal A=\{c_0,c_1,\ldots,c_M\}
-\]
+$$
 
 次episodeの一部をarchive中のstateから開始する。
 
-checkpoint \(c_i\) には、単なるconfigurationだけでなく、
+checkpoint $c_i$ には、単なるconfigurationだけでなく、
 
-\[
+$$
 c_i=
 \left(
 x_i,\,
@@ -183,27 +183,27 @@ B_i,\,
 F_i,\,
 D_i,\ldots
 \right)
-\]
+$$
 
 を保持する案がある。
 
-- \(x_i\)：途中形状
-- \(P_i\)：初期状態からそこまでのprefix path
-- \(B_i\)：prefix中の最大strain等のpath-dependent量
-- \(F_i\)：flatness
-- \(D_i\)：spread
+- $x_i$：途中形状
+- $P_i$：初期状態からそこまでのprefix path
+- $B_i$：prefix中の最大strain等のpath-dependent量
+- $F_i$：flatness
+- $D_i$：spread
 
-低strain pathを扱う場合、同じconfiguration \(x\) に到達しても、
+低strain pathを扱う場合、同じconfiguration $x$ に到達しても、
 
-\[
+$$
 B=0.5\%
-\]
+$$
 
 で来た場合と、
 
-\[
+$$
 B=3.0\%
-\]
+$$
 
 で来た場合は同じcheckpointとして扱えない可能性がある。
 
@@ -215,7 +215,7 @@ B=3.0\%
 
 昔のpolicyで
 
-\[
+$$
 x_0
 \xrightarrow{a_0^{old}}
 x_1
@@ -223,17 +223,17 @@ x_1
 x_2
 \xrightarrow{a_2^{old}}
 x_3
-\]
+$$
 
-まで到達し、\(x_3\) を保存したとする。
+まで到達し、$x_3$ を保存したとする。
 
-その後、現在policyで \(x_3\) から再開して、
+その後、現在policyで $x_3$ から再開して、
 
-\[
+$$
 x_3\rightarrow x_4\rightarrow\cdots\rightarrow x_T
-\]
+$$
 
-と成功した場合、その成功rewardを、昔のprefix \(x_0\to x_3\) のpolicyへどう反映すべきか。
+と成功した場合、その成功rewardを、昔のprefix $x_0\to x_3$ のpolicyへどう反映すべきか。
 
 ## 5.2 現時点の整理
 
@@ -241,9 +241,9 @@ checkpoint以降のsuffixは現在policyで生成するため、Actorのon-polic
 
 一方、古いprefixのactionは旧policyで生成されているので、新しいsuffix rewardを
 
-\[
+$$
 \nabla_\theta\log\pi_\theta(a_t^{old}\mid s_t)G_t
-\]
+$$
 
 として現在Actorへ直接流すのは、off-policy補正なしでは不適切。
 
@@ -253,23 +253,23 @@ checkpoint以降のsuffixは現在policyで生成するため、Actorのon-polic
    checkpointから現在policyで新しいsuffixを探索し、Actorはsuffixだけでon-policy更新する。
 
 2. **Critic**  
-   archive-startで得た結果からcheckpointの価値 \(V(s_k)\) を学習する。
+   archive-startで得た結果からcheckpointの価値 $V(s_k)$ を学習する。
 
 3. **Root-start episode**  
-   一定割合のepisodeは本来の \(x_0\) から現在policyで開始する。
+   一定割合のepisodeは本来の $x_0$ から現在policyで開始する。
 
 4. **価値伝播**  
    TD型Criticなら、
 
-   \[
+   $$
    V(s_t)\approx r_t+\gamma V(s_{t+1})
-   \]
+   $$
 
    により、archiveで得た価値をroot側へ徐々に伝播できる。
 
 つまり、
 
-\[
+$$
 \boxed{
 \text{archiveから先を探索}
 \rightarrow
@@ -279,7 +279,7 @@ V(\text{checkpoint})\text{を改善}
 \rightarrow
 \text{prefix policyへ価値を伝播}
 }
-\]
+$$
 
 という構成。
 
@@ -291,19 +291,19 @@ V(\text{checkpoint})\text{を改善}
 
 training時のstart-state distributionを、
 
-\[
+$$
 P(\text{root start})=\alpha,
 \qquad
 P(\text{archive start})=1-\alpha
-\]
+$$
 
 とする案。
 
 archive-startだけにすると、checkpoint以降のpolicyは改善しても、
 
-\[
+$$
 x_0\rightarrow x_i
-\]
+$$
 
 へ到達するpolicyが学習されない／忘れられる可能性がある。
 
@@ -311,7 +311,7 @@ x_0\rightarrow x_i
 
 ここで今後重要になるのは、
 
-- \(\alpha\) を固定するか適応的にするか
+- $\alpha$ を固定するか適応的にするか
 - archiveからどのcheckpointを選択するか
 
 である。
@@ -342,9 +342,9 @@ x_0\rightarrow x_i
 
 したがって、現在の候補手法は、
 
-\[
+$$
 \boxed{\text{restart RLをorigamiへ適用}}
-\]
+$$
 
 だけでは不十分。
 
@@ -375,23 +375,23 @@ x_0\rightarrow x_i
 
 Zhouらでは、
 
-\[
+$$
 \text{LHS＋局所最適化}
-\]
+$$
 
 でstable stateを探索し、
 
-\[
+$$
 \text{NEB}
-\]
+$$
 
 で既知のstate pair間のlow-energy pathを求める。
 
 LHSでstateが見つかっても、
 
-\[
+$$
 x_0\rightarrow x_T
-\]
+$$
 
 が初期状態から、
 
@@ -419,17 +419,17 @@ x_0\rightarrow x_T
 
 川口法でも、目的形状を一点指定せず、ある計量
 
-\[
+$$
 r=\mathcal R(x)
-\]
+$$
 
 を改善するように折り進められる。
 
 さらに、
 
-\[
+$$
 \mathcal R_1,\mathcal R_2,\ldots
-\]
+$$
 
 と計量を多数変えて高速に試せば、未知平坦状態を探索できる。
 
@@ -443,37 +443,37 @@ r=\mathcal R(x)
 
 川口型では、
 
-\[
+$$
 \boxed{\text{探索heuristicとなる計量を人間が事前に設計する}}
-\]
+$$
 
 のに対して、現在のRL案では、
 
-\[
+$$
 \boxed{\text{終端条件だけを与え、途中状態・行動の価値を探索経験から学ぶ}}
-\]
+$$
 
 ことを目指す。
 
 例えば川口型では、
 
-\[
+$$
 \mathcal R(x)
-\]
+$$
 
 が現在stateの「良さ」を表す。
 
 RLでは、
 
-\[
+$$
 V(x)
-\]
+$$
 
 または
 
-\[
+$$
 Q(x,a)
-\]
+$$
 
 によって、
 
@@ -483,19 +483,19 @@ Q(x,a)
 
 つまり、
 
-\[
+$$
 \boxed{
 \text{現在の幾何学的良さ}
 \neq
 \text{将来の到達可能性}
 }
-\]
+$$
 
 を学習対象にする。
 
-「別の計量 \(r_2\) を設計すれば川口法でも見つけられる」という反論に対しては、
+「別の計量 $r_2$ を設計すれば川口法でも見つけられる」という反論に対しては、
 
-> **その \(r_2\) を事前にどう設計するか自体が問題であり、本研究では成功・失敗した探索経験から中間state/actionの価値尺度を獲得する**
+> **その $r_2$ を事前にどう設計するか自体が問題であり、本研究では成功・失敗した探索経験から中間state/actionの価値尺度を獲得する**
 
 という位置付けが候補。
 
@@ -503,17 +503,17 @@ Q(x,a)
 
 metric sweepでは、
 
-\[
+$$
 r_1\rightarrow path_1,\qquad
 r_2\rightarrow path_2,\qquad
 \cdots
-\]
+$$
 
 と複数試行できるが、それぞれの試行結果を使って次の探索heuristicが自動的に改善されるわけではない。
 
 現在の候補法では、
 
-\[
+$$
 \text{trial}
 \rightarrow
 \text{state/archive・成功失敗情報を保存}
@@ -521,19 +521,19 @@ r_2\rightarrow path_2,\qquad
 \text{policy/value更新}
 \rightarrow
 \text{次の計算資源配分を変更}
-\]
+$$
 
 とする。
 
 したがって比較仮説は、
 
-\[
+$$
 \boxed{
 \text{hand-designed non-adaptive metric sweep}
 \quad\text{vs}\quad
 \text{outcome-adaptive learned search}
 }
-\]
+$$
 
 となる。
 
@@ -559,9 +559,9 @@ r_2\rightarrow path_2,\qquad
 
 本人の現時点の意向：
 
-\[
+$$
 \boxed{\text{低strainな成功pathを、できるだけ早く初回発見する}}
-\]
+$$
 
 無限計算時間での完全探索ではなく、有限予算内の探索効率を問題にする。
 
@@ -569,11 +569,11 @@ r_2\rightarrow path_2,\qquad
 
 候補：
 
-\[
+$$
 F(x_T)\le\varepsilon_F,
 \qquad
 |D(x_T)-D^*|\le\varepsilon_D
-\]
+$$
 
 具体的な目的座標は指定しない。
 
@@ -583,11 +583,11 @@ strainをどの物理量で定義するかは未確定。
 
 候補として、経路中最大strain
 
-\[
+$$
 B(\tau)
 =
 \max_t \varepsilon_{\max}(x_t)
-\]
+$$
 
 を用いる。
 
@@ -647,7 +647,7 @@ B(\tau)
 
 単独要素ではなく、次の**探索構造と問題設定の組合せ**。
 
-1. 目的形状ではなくflatness／\(D^*\)等のterminal conditionのみを指定。
+1. 目的形状ではなくflatness／$D^*$等のterminal conditionのみを指定。
 2. rootから実際にfeasibleに到達したstateとprefixを明示archive。
 3. 過去rolloutから、将来成功に有望な局所actionをstate-dependentに学習。
 4. archive stateからrestartして、同じprefix計算を繰り返さずfrontierを拡張。
@@ -676,7 +676,7 @@ B(\tau)
 候補情報：
 
 - flatness progress
-- \(D^*\) への接近
+- $D^*$ への接近
 - prefix strain
 - novelty／未探索性
 - visit count
@@ -688,15 +688,15 @@ restart選択則自体を手設計するのか、bandit／value／別policyで�
 
 ### C. Root-start / Archive-startの配分
 
-\[
+$$
 P(\text{root})=\alpha
-\]
+$$
 
 を固定するか、学習進捗に応じて変えるか。
 
 ### D. Critic
 
-現在のMonte Carlo \(V(s)\) のままか、TD/GAEでarchiveから得た価値をroot側へ早く伝播させるか。
+現在のMonte Carlo $V(s)$ のままか、TD/GAEでarchiveから得た価値をroot側へ早く伝播させるか。
 
 SACへの全面移行は一旦保留。
 
