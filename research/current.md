@@ -365,3 +365,29 @@ B_t=\max_{k\le t}\varepsilon(x_k)
 候補は、(1) rootから自己交差なし・低strainで到達したprefixを伴うstateだけをarchiveする、(2)同じconfigurationでもprefixの最大strain等が異なれば別checkpointとして扱う、(3) flatness／指定spread／novelty／prefix strain／policy learning progressを用いたrestart-state選択則、(4) archive-startで得たsuffix価値をroot側policyへどう伝播するか、(5) restartを使わないpure RL・T-RRT・既存restart-distribution RLとの同条件比較。
 
 参考：Tavakoli et al., *Exploring Restart Distributions*, arXiv:1811.11298；Ecoffet et al., *First return, then explore*, Nature 2021；Du et al., *Lucid Dreaming for Experience Replay*, 2020/2021；Florensa et al., *Reverse Curriculum Generation for Reinforcement Learning*, CoRL 2017。
+
+
+## 2026-10-26：折り紙configuration-space探索におけるrestart型RLの位置付け
+
+**本人の疑問**
+
+一般RLでは途中stateを保存して再始動する既往があるが、origami／folding mechanismのconfiguration-space探索では同様の手法はあまりないのではないか。
+
+**ChatGPTの文献確認**
+
+折り紙のconfiguration-space探索自体には既往が多い。代表例として、Xi & Lienのdiscrete-domain sampling＋Lazy-PRM、Guo・Tachi・YuのRRT、Tachi／Li系の接空間・shooting型経路生成がある。これらは主に既知のinitial/target state間のrigid-folding path planningを扱う。2026年にはfolding landscapeをより完全にmapする研究も現れている。
+
+一方、origami分野のRLは、現時点で確認できたものではcrease-pattern/design optimizationやrobotic folding policyが中心であり、「一つの初期折り状態からconfiguration spaceを探索し、途中reachable stateを明示archiveして、そこからpolicy learningを再始動しながら未知flat stateを発見する」という構成の査読済み研究は今回の検索では見つからなかった。
+
+したがって、restart RL一般は既往だが、origamiの未知終端configuration-space explorationへ持ち込む組合せは比較的空いている可能性がある。ただし新規性を主張するには、単なる分野移植ではなく、origami固有の低次元constraint manifold、self-contact、strain-limited prefix、terminal flatness／spread条件を利用したarchive設計・restart-state選択・policy updateが必要。
+
+**比較対象として維持するもの**
+
+- Xi & Lien：rigid origamiのdiscrete-domain sampling／Lazy-PRM
+- Guo・Tachi・Yu：DOF parameterization＋RRT
+- Tachi／Li：constraint tangent spaceを利用した逐次経路生成
+- Zhouら：elastic origamiのstable-state finding＋NEB
+- T-RRT：energy-biased reachable-state tree exploration
+- 一般RL側：Exploring Restart Distributions、Go-Explore、LiDER、Reverse Curriculum
+
+現時点では「origamiにrestart RLがない」と断言せず、「今回確認した主要なconfiguration-space探索文献では見つかっていない」と扱う。
