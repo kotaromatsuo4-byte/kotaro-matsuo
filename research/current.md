@@ -262,3 +262,35 @@ B(\tau)=\max_s\{U(\tau(s))-U(x_0)\}.
 2026-10-26／Codex（R-006・整理完了）：本人が最新と指定したこのチャットと添付ChatGPT会話を照合し、冒頭の現在地と会話経緯、Zhouへの課題感、②〜④の再評価、訂正理由、未決事項・出典を追記した。前の再構成・運用履歴と未完事項は保持。確認は元会話との照合、相対参照と差分・Git共有に限定し、研究コード・実験・historyは変更しない。
 
 運用上は、OneDriveで読めなかったMarkdown4件のGit追加が未完。今回も再取得しておらず、同期エラーの解消を確認したとは扱わない。対象は `folding_path/00_0822_all/result/experiments/` 内の `supervised_seven_d23_20260914_extended_v1/RESULTS_JA.md`、同 `d4_transfer/REPORT.md`、`supervised_seven_d23_20260914_v1/d4_transfer/REPORT.md` と同 `RESULTS_JA.md`。
+
+
+## 2026-10-26：RLとRRTの役割を再整理
+
+**本人の疑問・問題意識**
+
+AtlasRRTのように制約多様体の接空間を用いるRRTが既にあるなら、「T-RRTにmechanism modeを入れる」だけでは新規性が弱い。一方で、RRTは接空間内に無限にある方向から探索的に枝を伸ばすのに対し、RLなら平坦化につながりそうな方向を学習し、より強い探索圧をかけられるのではないか。単一問題でもRLがRRTより有利になり得るかを再検討した。
+
+**ChatGPTの整理**
+
+AtlasRRTでは制約ヤコビアンの核空間から接空間を構成し、その局所座標系上でsampling・extension・projectionを行うため、mechanism modeを使って接空間方向へ伸ばすこと自体は既往のconstrained motion planningと近い。
+
+一方、RRTとRLの探索圧は異なる。RRTはtree geometryとVoronoi biasによって未探索領域へ広がる圧力を持つ。RLは
+
+\[
+a\sim\pi_\theta(a\mid s)
+\]
+
+として、過去のrolloutから「この状態でどの局所方向が将来の成功につながりやすいか」を学び、action distributionそのものを有望方向へ集中できる。これは異課題への経験転移だけでなく、同一問題内でも、異なるtrajectoryで得た経験をfunction approximationによって類似stateへ一般化するという意味で利用価値がある。
+
+ただし、終点未知・可変長・途中悪化を許すことだけではRL固有の採用理由にはならない。RRT/T-RRTでも扱える。RLの優位性を主張するなら、単純RRTではなく、goal/heuristic-biased RRT、T-RRT、AtlasRRT等と同じ局所変形モデル・計算予算で比較し、学習したstate-dependent biasが初回発見費用を下げることを示す必要がある。
+
+特に、flatnessの即時改善を学ぶだけなら手設計metricによるgreedy/biased searchとの差が弱い。RLの意味が出るのは、return/valueを通じて、一時的なflatnessやstrainの悪化を含めても将来の成功確率・到達時間が良いactionを学習できる場合である。
+
+**現在の整理**
+
+今後の手法比較では、局所変形生成と探索方策を分離して考える。
+
+- 局所変形生成：mechanism mode / tangent space / elastic soft modeなど。AtlasRRT系との重なりを認識する。
+- 探索方策：uniform/space-filling RRT、strain-aware T-RRT、手設計heuristic bias、学習したRL policy。
+- RLを採用する場合の仮説：同一問題の複数試行の経験から、未訪問だが類似したstateにも有望方向を一般化し、有限予算での初回成功率・初回発見時間を改善できる。
+- 学習費用は探索予算に含める。RLが単一問題で有利かは未実証であり、比較実験で確認する。
