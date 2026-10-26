@@ -340,3 +340,28 @@ B_t=\max_{k\le t}\varepsilon(x_k)
 - CriticをMonte Carlo (V(s)) のまま使うか、TD/GAEへ変更して価値伝播を速めるか。
 - 保存prefixをbehavior cloning等で補助利用するか。
 - この方式をGo-Explore、restart-distribution/curriculum RL、tree-guided RL等の既往とどう差別化するか。
+
+
+## 2026-10-26：途中stateから再始動するRLの既往確認
+
+**本人の疑問**
+
+過去に訪れた途中stateを保存し、毎episodeをrootから始めず、そのstateから現在policyで再開するRLには既往がないか。
+
+**ChatGPTの文献確認**
+
+途中state／過去stateをepisodeの開始点として再利用する考え方には複数の既往がある。したがって、restartそのものを新規性にはできない。
+
+- **Exploring Restart Distributions / Prioritizing Starting States for Reinforcement Learning**（Tavakoli et al., arXiv:1811.11298, 2018–2020）：past observationsに対応するstateへresetできることを仮定し、experience memoryからrestart distributionを作る。重要な過去stateや多様なstateから再開して探索を促進し、on-policy／off-policyの両方に適用可能とする。現在検討している「保存した途中stateを次episodeの開始点にする」に最も直接的な既往の一つ。
+- **Go-Explore**（Ecoffet et al., 2019/2021）：promising statesを明示的にarchiveし、まずそこへreturnしてから新たにexploreする。hard explorationで、過去に到達した有望stateを忘れるdetachmentと、return途中の探索で脱線するderailmentを問題にする。
+- **LiDER: Lucid Dreaming for Experience Replay**（Du et al., 2020/2021）：過去stateへagentを戻し、そこからcurrent policyで新しいaction sequenceを実行し、以前より良い経験ならmemoryをrefreshする。off-policy actor-critic＋experience replayを前提とするが、「past stateからcurrent policyでsuffixを取り直す」という構造は今回の案と非常に近い。
+- **Reverse Curriculum Generation**（Florensa et al., 2017）：goal近傍から始め、成功できるstart state集合を徐々にgoalから遠ざけるcurriculum。start-state distributionを学習進度に合わせて変える代表例。ただし既知goalから逆向きにstart集合を拡張するため、未知平坦終端をrootから前向きに探す今回の問題とは異なる。
+- **VaPRL等のpersistent/reset-free RL**：初期状態分布そのものをcurriculumとして扱い、学習効率やreset負担を減らす系統もある。
+
+**現在の整理**
+
+「explicit state archive + restart + policy learning」という構成だけでは既往との差が弱い。今後独自性を考えるなら、origami問題固有の要素に置く必要がある。
+
+候補は、(1) rootから自己交差なし・低strainで到達したprefixを伴うstateだけをarchiveする、(2)同じconfigurationでもprefixの最大strain等が異なれば別checkpointとして扱う、(3) flatness／指定spread／novelty／prefix strain／policy learning progressを用いたrestart-state選択則、(4) archive-startで得たsuffix価値をroot側policyへどう伝播するか、(5) restartを使わないpure RL・T-RRT・既存restart-distribution RLとの同条件比較。
+
+参考：Tavakoli et al., *Exploring Restart Distributions*, arXiv:1811.11298；Ecoffet et al., *First return, then explore*, Nature 2021；Du et al., *Lucid Dreaming for Experience Replay*, 2020/2021；Florensa et al., *Reverse Curriculum Generation for Reinforcement Learning*, CoRL 2017。
