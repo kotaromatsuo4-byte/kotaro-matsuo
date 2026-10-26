@@ -1,393 +1,763 @@
 # 現在の議論の記録
 
-更新：2026-10-26／Codex。[研究全体の流れ](overview.md) ／ [運用ルール](../AGENTS.md)
+更新：2026-10-26／ChatGPT。  
+[研究全体の流れ](overview.md) ／ [運用ルール](../AGENTS.md)
 
-今は、**既往研究との差別化のために、問題設定と研究上の貢献を考えている段階**。ChatGPT・Codexが、本人の疑問とそれに返した回答・提案、その後の反応を順に記録する。
+このファイルは、10月以降の現在の研究相談を、**本人の疑問 → AIの回答・提案 → 本人の反応 → 現時点の整理**が追えるように記録する。historyは2026-09-30までで、現在の議論はまだアーカイブしない。
 
-historyは9月30日まで。現在の議論はまだアーカイブしない。今後アーカイブするときは、この記録から検討の経緯・判断理由・結果を整理した要約を作る。
+---
 
-## 最新の現在地（2026-10-26、本人がこのチャットを最新と指定）
+# 1. 最新の現在地
 
-**当面はひずみを扱う方向に絞り、具体的な目的形状を与えず、与えた初期状態から到達できる未知の平坦状態とそこへの経路を探索する。複数の到達可能な平坦状態を選択的に探せるアルゴリズムにしたい。** これは本人の意向であり、以下の手法案をすべて採用したという意味ではない。
+現在の主題は、**目的節点座標を与えず、初期形状から連続的に到達可能な未知の平坦状態と、その経路を有限計算予算内で効率よく発見する方法**である。
 
-- 中心の課題感：終状態が単独で存在することではなく、初期状態から許容ひずみ・非貫通等の条件を満たしてそこへ行けることを、経路とともに確認したい。
-- 求める成果：探索方法の有効性を示す研究。単にひずみを加えること、枝切替が起きること、既存要素を同時に扱うことだけでは新規性として十分か疑問を持っている。
-- 現在の文献比較：Zhouらへの発展方向としては筋が通るが、到達可能な未知状態と経路の同時探索にはT-RRTという近い既往がある。Goal-set CHOMPとSMTOも、終端を自由にする最適化という意味で関係するが、原論文の入力・初期化を区別する。
-- 未確定：弾性モデル、探索方向、学習の使用、木探索の採用、選択性の定義、最大ひずみ／エネルギー障壁／発見効率の優先順位。最小障壁探索はAIからの提案であり、本人が最終目的に確定したとは扱わない。
-- 平坦状態が当面の対象。添付会話ではstable stateへの拡張も議論したが、平坦性と安定性は別条件であり、両方を必須とする合意はない。汎化は過去の検討候補として残し、現在の主軸と同列には置かない。
+本人が現在重視している条件は次の通り。
 
-以下の前半は以前の再構成を保持する。そこで「主軸未確定」「川口論文未特定」とされた部分は、後半の今回の追記と出典で補足・更新する。方法の新規性や性能は未実証であり、実装・実験の実行依頼ではない。
+- 初期形状 \(x_0\) は与える。
+- 具体的な目的節点座標 \(x_T\) は与えない。
+- 終状態には平坦性と、必要に応じて広がり \(D^*\) などの性質を指定する。
+- 初期形状から終状態までの経路は連続であること。
+- 自己交差などの不適切な状態を避けること。
+- 今後は弾性変形・ひずみを許容する物理モデルを扱う。
+- 低strainな経路を見つけたい。
+- 無限時間ならrandom探索でも発見できる可能性があるため、研究の主眼は**有限計算予算での初回発見の高速化**に置く。
 
-## これまでの議論：既往研究とどこが違うのか
-
-対象：2026年9月〜10月22日ごろの相談。以下は保存された検討ノートを会話の流れに沿って再構成した要約であり、発言原文ではない。正確な発言日時・発言順・AIがChatGPTかCodexかは特定できていないため、論点のつながりが分かる順に並べる。「残った問い」は整理時点の論点であり、その文言で本人が発言したことを示すものではない。文献の説明も当時の相談内容であり、今回原論文を再検証した結果ではない。
-
-### 1. 目的形状を指定せずに探すことが、既往研究との差になるのでは？
-
-**本人の疑問・問題意識（要約）**
-
-目的節点座標を与えず未知の平坦状態を探している点を、研究の違いとして説明できないか。Actor–Criticでrandomより初回発見が速い条件は得たが、既往研究に対する位置付けがまだはっきりしない。
-
-**AI側の回答・提案（保存ノートからの要約、話者未確認）**
-
-川口の研究も、特定の終点座標を与えず、ある計量を減少させながら折るものとして議論していた。計量や初期条件を変えて異なる経路・終状態を得られるなら、「既往は解析、本研究は探索」という区別だけでは弱い。randomより速いことと、既往の幾何学的手法に対する貢献も別に考える必要がある。
-
-**ここまでの整理・残った問い**
-
-「探索するかどうか」ではなく、何を入力し、何を未知とし、何を評価するかで比較する。川口の対象原論文を特定し、数式・探索自由度・力学モデルを確認する必要がある。
-
-### 2. 多様解の列挙、異構造への汎化、ひずみを許す探索ならどうか？
-
-**本人の疑問・問題意識（要約）**
-
-初回発見の高速化からさらに研究を広げる方向として、複数の終状態の列挙、既知の折り経験の汎化、ひずみを許す経路を考えたい。
-
-**AI側の回答・提案（保存ノートからの要約、話者未確認）**
-
-多様解探索では方向持続の行動設計は効いたが、学習した選択による安定したrandom超えは確認できていない。汎化では、未知構造で再び大きな学習費用がかかるなら、軽量な既往手法と比べた価値を説明しにくい。ひずみについても、拘束誤差の許容値を緩めるだけで十分な貢献になるとは限らない。
-
-そこで、弾性変形を許したうえで「どの未知終状態へ、どれだけ低いエネルギー障壁を越えて到達できるか」という問題へ置き直す案が挙がった。
-
-**ここまでの整理・残った問い**
-
-汎化も候補として残るが、現在の差別化の検討は未知状態と低エネルギー経路の問題を中心に進んでいる。終状態を一つ速く発見することと、最小障壁の状態・経路を選ぶことのどちらを主目的にするかは未確定。
-
-### 3. 低エネルギー経路なら、Zhouらの研究と何が違うのか？
-
-**本人の疑問・問題意識（要約）**
-
-既に低エネルギーの折り経路を求める研究があるなら、ひずみやエネルギーを扱うだけでは差にならないのではないか。
-
-**AI側の回答・提案（保存ノートからの要約、話者未確認）**
-
-Zhouらについては、安定状態を発見する段階と、既知の始終状態をNEBで結ぶ段階を分ける枠組みとして整理していた。終状態が存在しても、指定した初期状態から衝突や許容ひずみの条件を守って到達できるかは、別の問いになる。
-
-そのため、「終点を先に選んで経路を求める」ことに対し、「初期状態から到達できる未知終状態と経路を同時に見つける」という問題設定を考えた。
-
-**ここまでの整理・残った問い**
-
-Zhouらとの比較の軸にはなるが、それだけで他の研究にもないとは言えない。状態発見と経路探索の実際の実証範囲、自己交差・ひずみの扱いを原論文で確認する。全安定状態の列挙を実証したと強く解釈しない。
-
-### 4. 未知状態と経路を同時に探すことも、既に行われているのでは？
-
-**本人の疑問・問題意識（要約）**
-
-指定初期状態から到達可能な未知状態を探す、という問題自体に独自性を置けるのか。
-
-**AI側の回答・提案（保存ノートからの要約、話者未確認）**
-
-T-RRT／T-RRTminが近い比較対象として挙がった。初期状態からエネルギーを考慮して木を伸ばし、目標を指定しない未知状態探索も扱うという理解だった。そのため、「初期状態から未知状態とそこへの経路を同時に探す」だけでは新規性を主張しにくい。
-
-**ここまでの整理・残った問い**
-
-T-RRTを主要な比較対象に含め、探索変数、局所的な経路の伸ばし方、制約処理、経路コスト、最適性を比較する。元のT-RRTだけでなく、後続のenergy-landscape探索や最適化研究との重なりも確認する。
-
-### 5. それなら、折り構造に合った探索方向や経路全体の評価に違いを置けないか？
-
-**本人の疑問・問題意識（要約）**
-
-一般的な探索の枠組みと重なるなら、折り構造の特徴を使って何を改善するかを考えたい。
-
-**AI側の回答・提案（保存ノートからの要約、話者未確認）**
-
-差別化の候補として、次の三つが挙がっている。
-
-- mechanism mode、soft mode、Hessianの低固有モードなど、力学的に意味のある方向を使って局所的に経路を伸ばす。
-- 初期状態からの接続を保ち、edge途中の自己交差・ひずみ・境界条件を確認しながら状態を生成する。
-- 局所的なエネルギー増減だけでなく、rootからの経路中の最大エネルギーを探索の評価に持つ。
-
-**ここまでの整理・残った問い**
-
-いずれも差別化の仮説であり、実証済みの新規性ではない。既往の内部座標・拘束空間探索やbottleneck最適化と比較する必要がある。三つを組み合わせるだけで貢献が成立するとも限らない。コストを定義したことと、そのコストを良くするアルゴリズムや大域的最適性は別である。
-
-### 6. 結局、どんな研究問題として説明するのか？
-
-**本人の疑問・問題意識（要約）**
-
-手法の名前や機能の組合せではなく、既往では何が難しく、本研究で何を答えたいかを明確にしたい。
-
-**AI側から挙がった問題設定（保存ノートを基に整理した候補）**
-
-多自由度の折り構造について、具体的な終状態を先に指定せず、与えた初期状態から制約を満たして到達できる未知の平坦／安定状態と、そこへ至る低エネルギー経路を同時に見つける。その際、折り構造の力学的な特徴を利用して、既往の探索より効率よく、または低い障壁で到達できるかを調べる。
-
-**ここまでの整理・残った問い**
-
-入力は初期形状・接続・支持条件・物理モデル・終端条件、未知変数は終状態の座標と経路、出力は終状態・経路・評価値という候補。ただし以下は未確定。
-
-- 終端をflat、stable、または両方とするか。D*などでどこまで条件付け、初期状態自体をどう除くか。
-- 幾何学的な接続可能性と、釣合い・載荷を含む物理的な実現可能性のどこまでを要求するか。
-- 材料・hinge/facet剛性、許容ひずみ、経路途中の検査精度をどう定めるか。
-- 経路上の最大エネルギーと初期状態を基準にした障壁をどう定義し、初回発見の計算量とどちらを主目的にするか。
-- 学習や木探索を採用する前に、同じ入力・制約・予算で既往と比較できる具体例を作れるか。
-
-次は原論文の比較項目を揃え、差が現れる具体例を考えてから最小の比較計画を立てる、という段階。新しい研究コードの実装・長時間実験はまだ依頼されていない。
-
-## 2026-10-26：現在の議論の残し方を相談
-
-**本人の疑問・希望（この会話の要約）**
-
-最近は既往研究との差別化のために問題設定を考えているので、それをcurrentの中心にしたい。項目別の説明だけでなく、自分の疑問にChatGPTやCodexがどう返したかを、履歴のように読める形にしたい。今後historyへ移すときに、それを整理・要約したい。
-
-**Codexの回答・対応**
-
-currentでは「疑問→回答・提案→反応・再質問→その時点の整理」を追えるようにする。過去ノートから再構成した部分は要約と明記し、確認できない発言者や日時を作らない。今後の新しい議論は日付と実際の話者を記して追記する。
-
-historyへ移す際は会話をそのまま複製せず、問題意識、試した案、結果、採用・不採用と理由、残った課題へまとめる。ただし版比較・数値・実験条件・出典や、判断が変わった理由は落とさない。
-
-**今回の運用上の決定**
-
-historyは9月30日までのまま。今回新しいアーカイブは作らず、currentの体裁とAGENTS.mdの運用ルールを更新する。アーカイブ後も未解決の問いと未完の作業をcurrentへ引き継ぐ。
-
-## 2026-10-26追記：添付ChatGPT会話とこのチャットによる具体化（R-006）
-
-記録者：Codex。会話の要約であり全文転載ではない。対象発言の正確な日時が記録されていない部分を10月26日の研究判断として捏造せず、この日を整理・最新意向確認の日付とする。出典C-CURRENT-01〜03は本ファイル内の識別子である。
-
-### 1. 列挙・汎化から、ひずみを扱う探索へ絞った経緯
-
-**本人の疑問・反応（このチャット）**
-
-列挙では方法の成果を論文にしたいが、探索圧がうまく働かずrandomとの差が小さい。方向持続が効くだけでは、大きく解候補を変える一般的探索との差がなく、比較方法にも疑問がある。該当フォルダーは本人の訂正により `folding_path/01_0813_five_bar_linkage/`。汎化では計量を変える軽量な既往法に対し、追加学習やデータ生成を要するNNが有利かを疑問視した。
-
-その後本人は、まずひずみに限定し、目的形状を与えず、平坦になる経路と複数の到達可能な平坦状態を選択的に探す方針を示した。現在の依頼でも、このチャットの内容が最新だと明示した。
-
-**Codexの回答と現在の扱い**
-
-ひずみの導入だけでは方法の新規性は確定しない。終端条件、経路上の制約、探索の効率・品質を具体化する必要がある。列挙へ戻す、RLを採用する、最小障壁を主目的にする、といった実装方針はまだ合意していない。
-
-### 2. ZhouのLHSは何を発見し、NEBは何を探索するのか
-
-**本人の疑問の進展（添付ChatGPT会話）**
-
-本人は、終点既知の経路探索と終点未知の発見を区別したうえで、川口法をひずみ対応に拡張するだけでは差が弱いのではないかと質問した。ChatGPTが最小弾性障壁やbranch switchingの例を提案したが、本人は用途・目的の明確さと、手法の有効性を伝えられる数値例題がまだ不足すると指摘した。
-
-さらにZhouのstable-state探索について、LHSの仕組み、高次元の初期値から得た状態の到達可能性、NEBとの役割分担を質問した。「Fig.4(e)はLHSで見つけたのか」「LHSの実証例はどこか」と具体的に確認した。
-
-**ChatGPTの回答（添付会話内の説明）**
-
-LHSはstable-state探索の初期値生成であり、NEBの中間経路生成とは別。NEBは与えた両端を固定し、補間した初期経路からband全体を更新する。Fig.4の両端は与えられた状態であり、LHSによる発見例としては扱わない。LHS＋局所最適化は記述されるが、大規模な未知状態発見の効率・網羅性を示す研究ではなく、主要な検討は形状間の経路にある、と説明を絞り直した。
-
-**本人の再提案**
-
-同じ初期状態から探索を始め、到達可能性を保った局所変形をつないで、有意な状態とそこへの経路を同時に得たい。「存在する状態」より「そこへ行ける状態」を求める問題として、Zhouへの発展形にならないかと質問した。
-
-**このチャットでのCodexの再評価・訂正**
-
-Zhouは形状探索をしていない、とは言えない。Section 4.1のLHS＋勾配法と4.2の形状間NEBを区別したうえで、**指定初期状態から、ひずみ制限・非貫通の下で到達可能な未知平坦状態を発見する問題を直接の主題として検証していない**、とするのが適切と回答した。以前のCodexの説明は、LHSの存在だけで今回の発見課題まで扱われているように読めたため修正した。
-
-- 「LHSで得た状態の到達可能性は未確認」と「到達不能な状態しか得られない」は異なる。後者は未検証の仮説。
-- 接続関係を固定した座標探索は、接続グラフそのものを変更しない。自己貫通、過大ひずみ、初期状態からの接続可能性は別途判定する。
-- Zhouの低エネルギー経路と、最大局所ひずみが最小の経路は同一ではない。NEBが収束したことを大域最小障壁の保証としない。
-- ChatGPTが例示した0.4%、0.8%等の閾値や連結リンクの案は、説明用の仮案。作成・解析済みの構造や実験結果ではない。
-
-### 3. 本人の依頼で②〜④を再評価した結果
-
-**本人の依頼（このチャット）**
-
-添付会話で整理したZhouへの課題感が正しいか判断し、目的形状なし・ひずみありの平坦経路探索に対して、②Goal-set CHOMP、③SMTO、④T-RRTをもう一度精査してほしい。
-
-**Codexの回答（このチャットでの文献照合結果の要約）**
-
-| 比較対象 | 原論文について確認した範囲 | 今回の問題への位置付け・残る拡張 |
-|---|---|---|
-| ① Zhouら（2023） | LHS＋局所最適化で安定状態を探索し、与えた状態間をNEBで接続する | 弾性モデル・経路探索の先行研究。平坦終端の生成と到達性を一体に扱う課題は残る。終端生成＋NEBを比較するなら生成費用も含める |
-| ② Goal-set CHOMP（2011） | 終端を制約集合内で動かしながら経路を最適化。実験では目標集合から姿勢候補を生成し、IKと補間で初期経路を用意する | 最終採用する終端は未知でも、終端候補なしで初期状態から発見する方式とは異なる。平坦集合への初期化・投影、多初期値探索等の拡張が必要 |
-| ③ SMTO（2020） | 与えた始終姿勢の補間から開始。終端自由度は手先位置を保つ回転や冗長自由度。サンプリング・解群の推定・局所最適化で複数経路を得る | 複数経路・終端最適化の先行例だが、未知平坦状態の発見をそのまま実証したものではない。終端生成、弾性・閉路拘束、非貫通、終端の多様性の扱いが必要 |
-| ④ T-RRT／T-RRTmin（2011） | 一つの初期状態からエネルギーを考慮して木を成長させ、未知の到達可能な極小を探索する使い方がある | 到達可能な未知状態と経路の同時探索という点で最も直接的な比較対象。平坦終端への誘導、ひずみ・接触を含む局所接続、異なる終端への探索配分を検討する |
-
-②・③を「目的形状を用意せず複数候補を発見できる」と広く紹介した以前のCodex回答は、原論文の初期化・終端自由度の範囲を踏まえて修正した。ただし、制約や目的関数を変更した適用可能性まで否定したわけではない。両者は探索中の全候補経路の実行可能性を常に維持する方式とも区別する。
-
-④があるため、添付ChatGPT会話の「終端と経路の同時探索を新規性とする」という提案だけでは不十分と整理した。Zhouとの差は説明できても、一般的な探索法との差は別に検証する必要がある。なお、平坦状態とエネルギー極小は同じ集合ではなく、T-RRTの低エネルギー優先だけで平坦状態を効率よく得られるとは限らない。
-
-### 4. 何を決め、何を保留しているか
-
-**本人が示した方向**：目的終端座標を与えず、ひずみを考慮し、初期状態から到達可能な複数の平坦状態と経路を選択的に発見する。方法の成果として説明できることを重視する。
-
-**AIからの方法候補、未採用**：mechanism／soft elastic／Hessian低固有モードで局所変形を生成する、到達済み状態を木として保持する、経路中の最大エネルギーを評価する、既発見終端の重複を抑える。single-ended growing stringやARTも添付会話で言及されたが、この整理で適用条件を検証したものではない。
-
-問題の整理案として、採用モデルで各状態・接続区間が制約を満たす経路を \(\tau\)、平坦終端集合を \(\mathcal G_{\mathrm{flat}}\) とし、
+「選択的に平坦状態を探す」とは、具体的な終点座標を指定することではなく、
 
 \[
-\tau(0)=x_0,\qquad \tau(1)\in\mathcal G_{\mathrm{flat}},\qquad
-\max_{s\in[0,1]}\varepsilon_{\max}(\tau(s))\le\bar\varepsilon
+F(x_T)\le \varepsilon_F,
+\qquad
+|D(x_T)-D^*|\le \varepsilon_D
 \]
 
-を満たす異なる終端・経路の組を求める。ここで \(\varepsilon_{\max}\) は選んだ物理モデルの最大ひずみ指標であり、既存ソルバーの拘束残差をそのまま材料ひずみと同一視しない。
+のように、**終状態の性質だけを指定して、その条件を満たす未知の形状を探す**ことを指す。
 
-エネルギー障壁を目的にする場合の候補は
+現時点では、SACへの置き換え、minimum-energy barrier最適化、RRT採用など、特定のアルゴリズムは確定していない。
 
-\[
-B(\tau)=\max_s\{U(\tau(s))-U(x_0)\}.
-\]
+---
 
-一つの最小障壁解を求める問題と、異なる終端を複数発見する問題は別に評価する。小さい経路最大値の枝を優先するだけでは、未探索領域も含む最適性は保証されない。到達経路が見つからなかったことを到達不能の証明にしない。
+# 2. 今日の議論の中心：Pure RLとRRTの弱点をどう補うか
 
-**次の判断事項（整理上の問いであり実験指示ではない）**
+## 2.1 本人の問題意識
 
-1. 「選択的」は、候補を後から選ぶことか、未知終端の性質を指定して狙うことか、未発見の終端へ探索を配分することか。連続的な弾性変形・対称性・重なり順を考慮した終端の同一性も定義する。
-2. 最大ひずみ、総エネルギー、初期状態からの障壁、計算量のどれを制約・目的・補助指標とするか。平坦性以外の広がり条件や初期状態そのものの除外を定める。
-3. 到達性はまずモデル内の連続経路の存在として扱うか。釣合い、安定性、載荷・アクチュエータ制約まで含めるか。nodeだけでなくedge途中の貫通・ひずみを検査する必要がある。
-4. 通常のT-RRTを同じ弾性モデルと終端条件へ適用したとき、何が難しいかを小規模例で明らかにできるか。平坦集合への到達、低ひずみ領域の移動、終端の重複等は失敗原因の仮説であり、まだ実証していない。
-5. 比較では同じ入力・制約・計算予算を使い、異なる実行可能な終端数、初回発見費用、経路最大ひずみ／障壁、未到達・打切りを分けて報告する。力学評価回数と実時間、seed、選抜と独立評価を揃える。具体的な予算・seedは未設定。
+これまでRLで、各状態のmechanism mode配合率を行動として未知平坦状態を探索してきた。
 
-### 根拠と確認範囲
+一方、RRT／AtlasRRTを調べると、制約多様体上をtreeで探索する方法が既に存在する。AtlasRRTでは制約ヤコビアンの核空間から接空間を構成して局所的に枝を伸ばすため、
 
-- **C-CURRENT-01**：本人提供のChatGPT会話 `../../../../../../Downloads/conversation_from_exploration_question.txt`（本ファイルからのローカル相対パス、Git共有対象外）。「終点未知が重要」からLHS／NEBの役割、reachable-state discoveryの提案までを今回再読。発言日時なし。Assistantは本人の説明によりChatGPT。
-- **C-CURRENT-02**：このチャットの、ひずみへの絞り込み、①〜④の比較、添付会話を踏まえた再評価。本人の発言とCodexの回答を区別して上記へ要約。前の回答で原論文を照合した範囲を継承し、今回新たな網羅的文献調査はしていない。
-- **C-CURRENT-03**：2026-10-26の本人の最新指定と `current.md` 整理依頼（R-006）。共有ノートの編集・共有が対象で、研究実装・実験の依頼ではない。
-- 川口の対象は、このチャットで本人が提供した `../../ref/骨組み構造の畳み込み解析.pdf`（本ファイルからのローカル相対パス、Git共有対象外）。文献は「骨組み構造の畳み込み解析」（1997）、[DOI: 10.3130/aijs.62.99_6](https://doi.org/10.3130/aijs.62.99_6)。前半の「対象原論文を特定する必要」は今回の会話照合で補足された。今回はPDFの再読・数式監査は行っていない。
-- Zhouら：[Low energy fold paths in multistable origami structures](https://doi.org/10.1016/j.ijsolstr.2023.112125)、2023、Sections 4.1・4.2・5。
-- Draganら：[Manipulation Planning with Goal Sets Using Constrained Trajectory Optimization](https://publications.ri.cmu.edu/storage/publications/pub_files/2011/5/icra2011_cam.pdf)、2011、Section VI。
-- Osa：[Multimodal Trajectory Optimization for Motion Planning](https://arxiv.org/html/2003.07054v2)、2020、Sections 3.1・3.6・4.1。
-- Jailletら：[Randomized Tree Construction Algorithm to Explore Energy Landscapes](https://www.iri.upc.edu/files/scidoc/1270-Randomized-tree-construction-algorithm-to-explore-energy-landscapes.pdf)、2011、DOI: 10.1002/jcc.21931。
+> 「T-RRTにmechanism modeを入れる」
 
-## 次の会話へ持ち越すこと（今回更新）
+だけでは、既往のconstrained motion planningとの差が弱い。
 
-今の中心は、ひずみを考慮した未知平坦状態の選択的探索について「既往の探索と何が違い、その違いがどの問題で役立つのか」を明らかにすること。上記の比較を出発点に、選択性・終端分類・物理モデルを具体化し、T-RRT等の既往法の困難が現れる例を検討する。本人の判断や新しい調査結果は、その後のやり取りとして追記する。
+しかしRRTには、接空間内に無限に近い局所方向がある中で、**どの方向が将来の平坦化に有望かを経験から学ばない**という弱点があるのではないか、と考えた。
 
-文献・会話の根拠と調査範囲は直前の「根拠と確認範囲」に記した。比較候補とその拡張を実装・検証済みとして扱わない。
+一方Pure RLには、過去試行から有望方向を学習できる反面、
 
-## 背景として参照する結果
+> 毎episodeを初期状態からやり直し、過去に到達した有望な途中stateを明示的に保持・再利用しない
 
-- **初回発見の成果**：five等でrandomより速い保存結果がある。未更新NNの成功、成功後の安定性、全構造での優位とは分ける。[C10比較](history/2026-08-28.md)
-- **多様な平坦状態の列挙**：方向持続の行動設計は有効だったが、学習選択による安定した上乗せは未確認。列挙へ戻すだけでは現在の差別化の問いは解決しない。[main6〜main9](history/2026-08-18.md)
-- **異構造への経験転移**：候補として残すが、今回の整理で新たに主軸へ決めたわけではない。教師生成・事前学習・target追加学習の費用と、軽量な既往手法に対する価値を考える。[転移比較](history/2026-09-14.md)
-- **ひずみを許す探索**：現在の問題設定につながる検討方向。既存コードのstrain許容は主に数値拘束誤差であり、弾性モデル・経路探索が実装済みという意味ではない。[問題意識の履歴](history/2026-09-30.md)
+という非効率がある。
 
-## 作業の引き継ぎ
+ここから、**RRTのexplicit state memoryと、RLのlearned exploration biasの中間的な方法**を検討する方向へ進んだ。
 
-研究史の整理（R-001）、構成変更（R-002）、差別化を中心とした整理（R-003）、historyを9月30日までに限定した参照修正（R-004）は完了。出典・会話の根拠は各history末尾にある。
+---
 
-2026-10-26／Codex（R-005・完了）：currentを会話の流れが分かる要約へ変更し、将来のhistoryは議論を整理・要約して作る運用へ変更。今回、文献再調査・実験・新しいアーカイブは行っていない。
+# 3. RLを使う意味の再整理
 
-2026-10-26／Codex（R-006・整理完了）：本人が最新と指定したこのチャットと添付ChatGPT会話を照合し、冒頭の現在地と会話経緯、Zhouへの課題感、②〜④の再評価、訂正理由、未決事項・出典を追記した。前の再構成・運用履歴と未完事項は保持。確認は元会話との照合、相対参照と差分・Git共有に限定し、研究コード・実験・historyは変更しない。
+## 3.1 以前の説明で弱かった点
 
-運用上は、OneDriveで読めなかったMarkdown4件のGit追加が未完。今回も再取得しておらず、同期エラーの解消を確認したとは扱わない。対象は `folding_path/00_0822_all/result/experiments/` 内の `supervised_seven_d23_20260914_extended_v1/RESULTS_JA.md`、同 `d4_transfer/REPORT.md`、`supervised_seven_d23_20260914_v1/d4_transfer/REPORT.md` と同 `RESULTS_JA.md`。
+以前はRL採用理由として、
 
+- 終点未知
+- 経路長が可変
+- 途中でflatnessが悪化してもよい
+- 多自由度のcontinuous action
 
-## 2026-10-26：RLとRRTの役割を再整理
+を挙げていた。
 
-**本人の疑問・問題意識**
+しかし、
 
-AtlasRRTのように制約多様体の接空間を用いるRRTが既にあるなら、「T-RRTにmechanism modeを入れる」だけでは新規性が弱い。一方で、RRTは接空間内に無限にある方向から探索的に枝を伸ばすのに対し、RLなら平坦化につながりそうな方向を学習し、より強い探索圧をかけられるのではないか。単一問題でもRLがRRTより有利になり得るかを再検討した。
+- 終点未知 → goal setを使うRRTでも扱える
+- 可変長 → RRTでも扱える
+- 途中悪化 → T-RRT等でも扱える
+- constraint manifold → AtlasRRT等でも扱える
 
-**ChatGPTの整理**
+ため、これだけでは「なぜRLか」の説明として弱い。
 
-AtlasRRTでは制約ヤコビアンの核空間から接空間を構成し、その局所座標系上でsampling・extension・projectionを行うため、mechanism modeを使って接空間方向へ伸ばすこと自体は既往のconstrained motion planningと近い。
+## 3.2 現在のRL採用理由
 
-一方、RRTとRLの探索圧は異なる。RRTはtree geometryとVoronoi biasによって未探索領域へ広がる圧力を持つ。RLは
+RLに期待する本質は、
 
 \[
 a\sim\pi_\theta(a\mid s)
 \]
 
-として、過去のrolloutから「この状態でどの局所方向が将来の成功につながりやすいか」を学び、action distributionそのものを有望方向へ集中できる。これは異課題への経験転移だけでなく、同一問題内でも、異なるtrajectoryで得た経験をfunction approximationによって類似stateへ一般化するという意味で利用価値がある。
+として、同じ問題内の過去rolloutから、
 
-ただし、終点未知・可変長・途中悪化を許すことだけではRL固有の採用理由にはならない。RRT/T-RRTでも扱える。RLの優位性を主張するなら、単純RRTではなく、goal/heuristic-biased RRT、T-RRT、AtlasRRT等と同じ局所変形モデル・計算予算で比較し、学習したstate-dependent biasが初回発見費用を下げることを示す必要がある。
+> **この状態では、どの局所方向が将来の成功につながりやすいか**
 
-特に、flatnessの即時改善を学ぶだけなら手設計metricによるgreedy/biased searchとの差が弱い。RLの意味が出るのは、return/valueを通じて、一時的なflatnessやstrainの悪化を含めても将来の成功確率・到達時間が良いactionを学習できる場合である。
+を学び、action distributionそのものを有望方向へ集中させること。
 
-**現在の整理**
+RRTの主な探索圧は、Voronoi bias等による
 
-今後の手法比較では、局所変形生成と探索方策を分離して考える。
+\[
+\boxed{\text{未探索領域へのspace-filling}}
+\]
 
-- 局所変形生成：mechanism mode / tangent space / elastic soft modeなど。AtlasRRT系との重なりを認識する。
-- 探索方策：uniform/space-filling RRT、strain-aware T-RRT、手設計heuristic bias、学習したRL policy。
-- RLを採用する場合の仮説：同一問題の複数試行の経験から、未訪問だが類似したstateにも有望方向を一般化し、有限予算での初回成功率・初回発見時間を改善できる。
-- 学習費用は探索予算に含める。RLが単一問題で有利かは未実証であり、比較実験で確認する。
+である。
 
+RLでは、
 
-## 2026-10-26：途中state再始動型RLとprefixへの価値伝播
+\[
+\boxed{\text{将来成功しそうな方向へのstate-dependent bias}}
+\]
 
-**本人の方針**
+を学習できる可能性がある。
 
-SACへの全面移行は、既存off-policy手法を適用してsample efficiencyを上げるだけで研究の本質ではないため一旦保留する。代わりに、過去に到達したstateを明示的に保存し、毎episodeをrootからやり直さず、有望な途中stateから再始動することで、RRTのexplicit state memoryとRLのlearned policyの中間的な探索法を検討する。
+特に意味があるのは、現在のflatnessをただ改善する方向ではなく、
 
-**本人の疑問**
+\[
+\text{一時的なflatness/strain悪化}
+\rightarrow
+\text{最終的な成功}
+\]
 
-途中state (s_k) から現在policyでsuffixを探索して新しい報酬を得た場合、昔のpolicyで生成した (x_0\to s_k) のprefixをどう評価・学習すべきか。
+という長期的関係をreturn/valueから学習する場合。
 
-**ChatGPTの整理**
+したがって、
 
-checkpointから現在policyで生成したsuffixはon-policyなので、そのsuffixのActor更新にはそのまま使える。一方、保存済みprefixのactionは旧policyで生成されているため、新しいsuffix rewardを現在policyのpolicy-gradientとして直接流すのはoff-policyになり、補正なしでは不適切。
+> **終点未知だからRL**
 
-基本案はprefixとsuffixを分離する。
+ではなく、
 
-1. archive-start rolloutで、checkpoint (s_k) 以降を現在policyで探索し、Actorはsuffixだけをon-policy更新する。
-2. 同時にCriticへcheckpointの価値 (V(s_k)) を学習させる。
-3. root-start rolloutも一定割合残し、現在policyでroot側から再訪したstateに対して
-   [
+> **高次元・連続な局所行動空間に対し、将来の成功に関する探索heuristicを経験から獲得するためRLを使う**
+
+という整理が現在は妥当。
+
+---
+
+# 4. Pure RLの弱点：有望途中stateを再利用できない
+
+## 4.1 本人の疑問
+
+例えば一度、
+
+\[
+x_0\rightarrow x_1\rightarrow x_2
+\]
+
+までかなり有望に進んだ後に失敗しても、Pure RLでは次episodeにまた \(x_0\) から開始する。
+
+RRTなら \(x_2\) がtreeに残るため、
+
+\[
+x_2\rightarrow A
+\]
+
+が失敗した後、
+
+\[
+x_2\rightarrow B
+\]
+
+を試せる。
+
+この差を利用できないか。
+
+## 4.2 現在の案
+
+過去に実際に到達したstateをarchiveし、
+
+\[
+\mathcal A=\{c_0,c_1,\ldots,c_M\}
+\]
+
+次episodeの一部をarchive中のstateから開始する。
+
+checkpoint \(c_i\) には、単なるconfigurationだけでなく、
+
+\[
+c_i=
+\left(
+x_i,\,
+P_i,\,
+B_i,\,
+F_i,\,
+D_i,\ldots
+\right)
+\]
+
+を保持する案がある。
+
+- \(x_i\)：途中形状
+- \(P_i\)：初期状態からそこまでのprefix path
+- \(B_i\)：prefix中の最大strain等のpath-dependent量
+- \(F_i\)：flatness
+- \(D_i\)：spread
+
+低strain pathを扱う場合、同じconfiguration \(x\) に到達しても、
+
+\[
+B=0.5\%
+\]
+
+で来た場合と、
+
+\[
+B=3.0\%
+\]
+
+で来た場合は同じcheckpointとして扱えない可能性がある。
+
+---
+
+# 5. Archive-start RLでの学習とcredit assignment
+
+## 5.1 本人の疑問
+
+昔のpolicyで
+
+\[
+x_0
+\xrightarrow{a_0^{old}}
+x_1
+\xrightarrow{a_1^{old}}
+x_2
+\xrightarrow{a_2^{old}}
+x_3
+\]
+
+まで到達し、\(x_3\) を保存したとする。
+
+その後、現在policyで \(x_3\) から再開して、
+
+\[
+x_3\rightarrow x_4\rightarrow\cdots\rightarrow x_T
+\]
+
+と成功した場合、その成功rewardを、昔のprefix \(x_0\to x_3\) のpolicyへどう反映すべきか。
+
+## 5.2 現時点の整理
+
+checkpoint以降のsuffixは現在policyで生成するため、Actorのon-policy更新にそのまま使える。
+
+一方、古いprefixのactionは旧policyで生成されているので、新しいsuffix rewardを
+
+\[
+\nabla_\theta\log\pi_\theta(a_t^{old}\mid s_t)G_t
+\]
+
+として現在Actorへ直接流すのは、off-policy補正なしでは不適切。
+
+基本案は、prefixとsuffixを分離する。
+
+1. **Archive-start episode**  
+   checkpointから現在policyで新しいsuffixを探索し、Actorはsuffixだけでon-policy更新する。
+
+2. **Critic**  
+   archive-startで得た結果からcheckpointの価値 \(V(s_k)\) を学習する。
+
+3. **Root-start episode**  
+   一定割合のepisodeは本来の \(x_0\) から現在policyで開始する。
+
+4. **価値伝播**  
+   TD型Criticなら、
+
+   \[
    V(s_t)\approx r_t+\gamma V(s_{t+1})
-   ]
-   のTD bootstrapを使うことで、checkpointで得た価値をroot側へ徐々に伝播する。
-4. 保存prefixはActorのpolicy-gradient教師には直接使わない。成功path全体が得られた場合は、必要なら別途behavior cloning的な補助教師として扱う案はあるが、これは別の学習則。
+   \]
 
-この設計では、archiveは到達済みstateとprefix pathをexplicit memoryとして保持し、Actor/Criticはstateから有望方向・価値をfunction approximationで学ぶ。RRTのようなtree memoryとRLのpolicy generalizationを組み合わせる中間形になる。
+   により、archiveで得た価値をroot側へ徐々に伝播できる。
 
-**重要な状態設計**
+つまり、
 
-低strain pathでは、同じ形状 (x) でもそこまでのprefixで経験した最大strainが異なれば価値が異なる。そのためcheckpointには少なくとも
+\[
+\boxed{
+\text{archiveから先を探索}
+\rightarrow
+V(\text{checkpoint})\text{を改善}
+\rightarrow
+\text{rootからfresh rollout}
+\rightarrow
+\text{prefix policyへ価値を伝播}
+}
+\]
 
-[
-B_t=\max_{k\le t}\varepsilon(x_k)
-]
+という構成。
 
-を保持し、必要ならRL stateも (s_t=(x_t,B_t,\ldots)) としてMarkov性を保つ。自己接触・重なり順など、将来の遷移可能性に履歴依存性がある場合も同様に必要情報をstateへ含めるか、同一形状でも別checkpointとして扱う。
+保存prefixをActorのpolicy-gradient教師として直接再利用するのではなく、必要なら成功trajectory完成後にbehavior cloning的な補助教師として扱う案はあるが、これは別の学習則。
 
-**未決事項**
+---
 
-- archiveからどのstateを再始動点として選ぶか。
-- root-startとarchive-startの割合を固定するか適応的にするか。
-- CriticをMonte Carlo (V(s)) のまま使うか、TD/GAEへ変更して価値伝播を速めるか。
-- 保存prefixをbehavior cloning等で補助利用するか。
-- この方式をGo-Explore、restart-distribution/curriculum RL、tree-guided RL等の既往とどう差別化するか。
+# 6. Root-startとArchive-startを混ぜる
 
+training時のstart-state distributionを、
 
-## 2026-10-26：途中stateから再始動するRLの既往確認
+\[
+P(\text{root start})=\alpha,
+\qquad
+P(\text{archive start})=1-\alpha
+\]
 
-**本人の疑問**
+とする案。
 
-過去に訪れた途中stateを保存し、毎episodeをrootから始めず、そのstateから現在policyで再開するRLには既往がないか。
+archive-startだけにすると、checkpoint以降のpolicyは改善しても、
 
-**ChatGPTの文献確認**
+\[
+x_0\rightarrow x_i
+\]
 
-途中state／過去stateをepisodeの開始点として再利用する考え方には複数の既往がある。したがって、restartそのものを新規性にはできない。
+へ到達するpolicyが学習されない／忘れられる可能性がある。
 
-- **Exploring Restart Distributions / Prioritizing Starting States for Reinforcement Learning**（Tavakoli et al., arXiv:1811.11298, 2018–2020）：past observationsに対応するstateへresetできることを仮定し、experience memoryからrestart distributionを作る。重要な過去stateや多様なstateから再開して探索を促進し、on-policy／off-policyの両方に適用可能とする。現在検討している「保存した途中stateを次episodeの開始点にする」に最も直接的な既往の一つ。
-- **Go-Explore**（Ecoffet et al., 2019/2021）：promising statesを明示的にarchiveし、まずそこへreturnしてから新たにexploreする。hard explorationで、過去に到達した有望stateを忘れるdetachmentと、return途中の探索で脱線するderailmentを問題にする。
-- **LiDER: Lucid Dreaming for Experience Replay**（Du et al., 2020/2021）：過去stateへagentを戻し、そこからcurrent policyで新しいaction sequenceを実行し、以前より良い経験ならmemoryをrefreshする。off-policy actor-critic＋experience replayを前提とするが、「past stateからcurrent policyでsuffixを取り直す」という構造は今回の案と非常に近い。
-- **Reverse Curriculum Generation**（Florensa et al., 2017）：goal近傍から始め、成功できるstart state集合を徐々にgoalから遠ざけるcurriculum。start-state distributionを学習進度に合わせて変える代表例。ただし既知goalから逆向きにstart集合を拡張するため、未知平坦終端をrootから前向きに探す今回の問題とは異なる。
-- **VaPRL等のpersistent/reset-free RL**：初期状態分布そのものをcurriculumとして扱い、学習効率やreset負担を減らす系統もある。
+そのためroot-startを一定割合残す必要がある。
 
-**現在の整理**
+ここで今後重要になるのは、
 
-「explicit state archive + restart + policy learning」という構成だけでは既往との差が弱い。今後独自性を考えるなら、origami問題固有の要素に置く必要がある。
+- \(\alpha\) を固定するか適応的にするか
+- archiveからどのcheckpointを選択するか
 
-候補は、(1) rootから自己交差なし・低strainで到達したprefixを伴うstateだけをarchiveする、(2)同じconfigurationでもprefixの最大strain等が異なれば別checkpointとして扱う、(3) flatness／指定spread／novelty／prefix strain／policy learning progressを用いたrestart-state選択則、(4) archive-startで得たsuffix価値をroot側policyへどう伝播するか、(5) restartを使わないpure RL・T-RRT・既存restart-distribution RLとの同条件比較。
+である。
 
-参考：Tavakoli et al., *Exploring Restart Distributions*, arXiv:1811.11298；Ecoffet et al., *First return, then explore*, Nature 2021；Du et al., *Lucid Dreaming for Experience Replay*, 2020/2021；Florensa et al., *Reverse Curriculum Generation for Reinforcement Learning*, CoRL 2017。
+---
 
+# 7. Restart-state RL自体には既往がある
 
-## 2026-10-26：折り紙configuration-space探索におけるrestart型RLの位置付け
+途中stateを保存してそこから再開する考え方自体には既往があるため、
 
-**本人の疑問**
+> **restartを導入したことそのもの**
 
-一般RLでは途中stateを保存して再始動する既往があるが、origami／folding mechanismのconfiguration-space探索では同様の手法はあまりないのではないか。
+は新規性にはできない。
 
-**ChatGPTの文献確認**
+確認した主な系統：
 
-折り紙のconfiguration-space探索自体には既往が多い。代表例として、Xi & Lienのdiscrete-domain sampling＋Lazy-PRM、Guo・Tachi・YuのRRT、Tachi／Li系の接空間・shooting型経路生成がある。これらは主に既知のinitial/target state間のrigid-folding path planningを扱う。2026年にはfolding landscapeをより完全にmapする研究も現れている。
+- **Exploring Restart Distributions / Prioritizing Starting States for Reinforcement Learning**  
+  過去に訪問したstateをrestart distributionとして利用。on-policy/off-policy双方を想定。
 
-一方、origami分野のRLは、現時点で確認できたものではcrease-pattern/design optimizationやrobotic folding policyが中心であり、「一つの初期折り状態からconfiguration spaceを探索し、途中reachable stateを明示archiveして、そこからpolicy learningを再始動しながら未知flat stateを発見する」という構成の査読済み研究は今回の検索では見つからなかった。
+- **Go-Explore**  
+  promising stateをarchiveし、そこへreturnしてから新しくexploreする。
 
-したがって、restart RL一般は既往だが、origamiの未知終端configuration-space explorationへ持ち込む組合せは比較的空いている可能性がある。ただし新規性を主張するには、単なる分野移植ではなく、origami固有の低次元constraint manifold、self-contact、strain-limited prefix、terminal flatness／spread条件を利用したarchive設計・restart-state選択・policy updateが必要。
+- **LiDER**  
+  past stateへ戻り、current policyでsuffixを再rolloutする。
 
-**比較対象として維持するもの**
+- **Reverse Curriculum Generation**  
+  start-state distributionを学習進度に応じて変える。ただしgoal既知でgoal側からstart集合を拡張する。
 
-- Xi & Lien：rigid origamiのdiscrete-domain sampling／Lazy-PRM
-- Guo・Tachi・Yu：DOF parameterization＋RRT
-- Tachi／Li：constraint tangent spaceを利用した逐次経路生成
-- Zhouら：elastic origamiのstable-state finding＋NEB
-- T-RRT：energy-biased reachable-state tree exploration
-- 一般RL側：Exploring Restart Distributions、Go-Explore、LiDER、Reverse Curriculum
+したがって、現在の候補手法は、
 
-現時点では「origamiにrestart RLがない」と断言せず、「今回確認した主要なconfiguration-space探索文献では見つかっていない」と扱う。
+\[
+\boxed{\text{restart RLをorigamiへ適用}}
+\]
+
+だけでは不十分。
+
+---
+
+# 8. Origami configuration-space探索側の既往
+
+折り紙／折り構造のconfiguration-space探索には既往がある。
+
+- Xi & Lien：discrete-domain sampling＋PRM系
+- Guo・Tachi・Yu：RRTによるrigid-origami path planning
+- Tachi／Li：constraint tangent space・mechanism modeに近い局所経路生成
+- AtlasRRT系：一般のconstraint manifold上でtangent-space sampling／projection
+- Zhouら：elastic origamiのstable-state finding＋既知状態間NEB
+- T-RRT：一般energy landscapeで初期状態からreachable minimaをtree探索
+
+一方、今回確認した主要なorigami configuration-space探索文献では、
+
+> **初期折り状態からreachableな途中stateをexplicit archiveし、そのstateからRL policyを再始動・更新しながら、未知flat stateを探索する**
+
+という組合せは見つかっていない。
+
+ただし、これは現時点の調査範囲での判断であり、「存在しない」とは断言しない。
+
+---
+
+# 9. Zhouらとの関係
+
+Zhouらでは、
+
+\[
+\text{LHS＋局所最適化}
+\]
+
+でstable stateを探索し、
+
+\[
+\text{NEB}
+\]
+
+で既知のstate pair間のlow-energy pathを求める。
+
+LHSでstateが見つかっても、
+
+\[
+x_0\rightarrow x_T
+\]
+
+が初期状態から、
+
+- 自己交差なし
+- 許容strain内
+- 連続的
+
+に到達できることは、そのstate discovery自体では確認されない。
+
+この点から、
+
+> **存在する状態ではなく、初期状態から実際に行ける状態とpathを同時に探したい**
+
+という現在の問題意識が生じた。
+
+ただし、この「reachable state + pathの同時探索」だけならT-RRT等が既に存在するため、それ自体を新規性にはできない。
+
+---
+
+# 10. 川口法との最も重要な比較
+
+ここが現在の新規性検討で最も中心的。
+
+## 10.1 本人の問題意識
+
+川口法でも、目的形状を一点指定せず、ある計量
+
+\[
+r=\mathcal R(x)
+\]
+
+を改善するように折り進められる。
+
+さらに、
+
+\[
+\mathcal R_1,\mathcal R_2,\ldots
+\]
+
+と計量を多数変えて高速に試せば、未知平坦状態を探索できる。
+
+したがって、
+
+> 「初期形状から連続的に未知平坦状態を探索する」
+
+だけでは、川口との差を説明できない。
+
+## 10.2 現時点で最も本質的と考えている差
+
+川口型では、
+
+\[
+\boxed{\text{探索heuristicとなる計量を人間が事前に設計する}}
+\]
+
+のに対して、現在のRL案では、
+
+\[
+\boxed{\text{終端条件だけを与え、途中状態・行動の価値を探索経験から学ぶ}}
+\]
+
+ことを目指す。
+
+例えば川口型では、
+
+\[
+\mathcal R(x)
+\]
+
+が現在stateの「良さ」を表す。
+
+RLでは、
+
+\[
+V(x)
+\]
+
+または
+
+\[
+Q(x,a)
+\]
+
+によって、
+
+> 現在は平坦でなくても、その先に成功経路があるstate/action
+
+を高く評価できる可能性がある。
+
+つまり、
+
+\[
+\boxed{
+\text{現在の幾何学的良さ}
+\neq
+\text{将来の到達可能性}
+}
+\]
+
+を学習対象にする。
+
+「別の計量 \(r_2\) を設計すれば川口法でも見つけられる」という反論に対しては、
+
+> **その \(r_2\) を事前にどう設計するか自体が問題であり、本研究では成功・失敗した探索経験から中間state/actionの価値尺度を獲得する**
+
+という位置付けが候補。
+
+## 10.3 Adaptive searchとしての差
+
+metric sweepでは、
+
+\[
+r_1\rightarrow path_1,\qquad
+r_2\rightarrow path_2,\qquad
+\cdots
+\]
+
+と複数試行できるが、それぞれの試行結果を使って次の探索heuristicが自動的に改善されるわけではない。
+
+現在の候補法では、
+
+\[
+\text{trial}
+\rightarrow
+\text{state/archive・成功失敗情報を保存}
+\rightarrow
+\text{policy/value更新}
+\rightarrow
+\text{次の計算資源配分を変更}
+\]
+
+とする。
+
+したがって比較仮説は、
+
+\[
+\boxed{
+\text{hand-designed non-adaptive metric sweep}
+\quad\text{vs}\quad
+\text{outcome-adaptive learned search}
+}
+\]
+
+となる。
+
+さらにarchiveを使えば、複数metricで毎回rootから似たprefixを再計算する代わりに、一度到達したreachable prefixを再利用できる可能性がある。
+
+ここが、今日の議論で最も新規性候補として重要になった。
+
+---
+
+# 11. 現在の研究問題の候補
+
+現時点では、次のように整理するのが最も近い。
+
+> **多自由度折り構造について、具体的な目的形状を与えず、平坦性・広がり等の終端条件だけを与える。初期形状から自己交差を避け、許容strain内で到達できる未知平坦状態と経路を有限計算予算内で発見する。探索中に得られた成功・失敗経験から将来の成功に有望な局所方向を学習すると同時に、過去に到達した有望stateとそのprefixを明示的に保持・再利用することで、Pure RL、RRT系、手設計metric sweepより初回発見を効率化できるかを検証する。**
+
+これは現在の作業仮説であり、新規性・性能は未実証。
+
+---
+
+# 12. 研究目的と評価指標
+
+## 12.1 主目的
+
+本人の現時点の意向：
+
+\[
+\boxed{\text{低strainな成功pathを、できるだけ早く初回発見する}}
+\]
+
+無限計算時間での完全探索ではなく、有限予算内の探索効率を問題にする。
+
+## 12.2 終端条件
+
+候補：
+
+\[
+F(x_T)\le\varepsilon_F,
+\qquad
+|D(x_T)-D^*|\le\varepsilon_D
+\]
+
+具体的な目的座標は指定しない。
+
+## 12.3 経路品質
+
+strainをどの物理量で定義するかは未確定。
+
+候補として、経路中最大strain
+
+\[
+B(\tau)
+=
+\max_t \varepsilon_{\max}(x_t)
+\]
+
+を用いる。
+
+ただし、これを
+
+- hard constraintにするか
+- reward/scoreにするか
+- 補助評価にするか
+
+はまだ決めていない。
+
+## 12.4 探索効率
+
+最低限分けて評価する候補：
+
+- 初回成功までの力学評価回数
+- wall time
+- 成功率
+- 発見pathの最大strain
+- 打切り／未到達
+- seed間ばらつき
+
+学習に使った計算も探索予算へ含める。
+
+---
+
+# 13. 比較対象
+
+最低限のbaseline候補：
+
+1. **一様random / Pure RLの既存方式**
+2. **川口型 metric-driven search / metric sweep**
+3. **RRT / AtlasRRT系**
+4. **T-RRT**
+5. **restartなしPure RL**
+6. **一般restart-state selection**
+7. **提案 archive + learned-policy search**
+
+局所変形生成方法と探索方策を分離し、比較時にはできるだけ共通化する必要がある。
+
+---
+
+# 14. 新規性について現在言えること／言えないこと
+
+## 言えないこと
+
+- 目的形状を指定しないこと自体が新規。
+- ひずみを許すこと自体が新規。
+- mechanism modeでRRTを伸ばすこと自体が新規。
+- reachable stateとpathを同時に探すこと自体が新規。
+- 途中stateからRLをrestartすること自体が新規。
+- RLを使うこと自体が新規。
+
+これらにはそれぞれ近い既往がある。
+
+## 現在の新規性候補
+
+単独要素ではなく、次の**探索構造と問題設定の組合せ**。
+
+1. 目的形状ではなくflatness／\(D^*\)等のterminal conditionのみを指定。
+2. rootから実際にfeasibleに到達したstateとprefixを明示archive。
+3. 過去rolloutから、将来成功に有望な局所actionをstate-dependentに学習。
+4. archive stateからrestartして、同じprefix計算を繰り返さずfrontierを拡張。
+5. 低strainな成功pathの初回発見を有限予算内で高速化。
+6. 手設計metricを大量にsweepする探索に対し、探索結果からheuristic／計算資源配分をadaptiveに更新。
+
+ただし「既存要素を組み合わせたこと」だけでは不十分であり、**この組合せによって何が改善するかを比較実験で示す必要がある**。
+
+---
+
+# 15. 次に決めること
+
+現時点でアルゴリズム実装へ進む前に、次を詰める。
+
+### A. Archiveの定義
+
+- どのstateを保存するか。
+- 近いstateをどう重複判定するか。
+- 同じconfigurationでもprefix strainが違えば別stateとするか。
+- self-contact／重なり順等の履歴情報をどう保持するか。
+
+### B. Restart-state選択則
+
+最も重要な未決事項。
+
+候補情報：
+
+- flatness progress
+- \(D^*\) への接近
+- prefix strain
+- novelty／未探索性
+- visit count
+- Critic value
+- policy uncertainty
+- 学習進捗
+
+restart選択則自体を手設計するのか、bandit／value／別policyで学習するのかも未確定。
+
+### C. Root-start / Archive-startの配分
+
+\[
+P(\text{root})=\alpha
+\]
+
+を固定するか、学習進捗に応じて変えるか。
+
+### D. Critic
+
+現在のMonte Carlo \(V(s)\) のままか、TD/GAEでarchiveから得た価値をroot側へ早く伝播させるか。
+
+SACへの全面移行は一旦保留。
+
+### E. 物理モデル
+
+現在コードのconstraint residualを材料strainと同一視しない。
+
+- bar/facet strain
+- hinge energy
+- elastic soft mode
+- self-contact
+
+などをどうモデル化するかは別途決める。
+
+### F. 川口との差が出る数値例
+
+特に、
+
+- 一つの固定metricでは局所的に誘導しにくい
+- metricを多数sweepするとprefix計算を重複する
+- 探索経験から「今は悪いが将来良い」stateの価値を学べる
+- archive restartでそのfrontierを効率的に掘れる
+
+という特徴が現れる低自由度例を考える。
+
+---
+
+# 16. 文献上の主な比較先
+
+現在の中心的比較先：
+
+- 川口：骨組み構造の畳み込み解析（1997）
+- Zhou et al.: *Low energy fold paths in multistable origami structures* (2023)
+- Xi & Lien：rigid origami discrete-domain sampling / PRM
+- Guo・Tachi・Yu：rigid origami RRT
+- AtlasRRT系：constraint manifold上のsampling-based planning
+- Jaillet et al.: T-RRT / T-RRTmin
+- Goal-set CHOMP
+- SMTO
+- Exploring Restart Distributions
+- Go-Explore
+- LiDER
+- Reverse Curriculum Generation
+
+これらの存在により、単純な構成要素ではなく、**何を事前に与え、何を探索結果から獲得し、有限予算内で何を改善するか**を研究貢献として明確化する必要がある。
+
+---
+
+# 17. 現時点の一文要約
+
+> **目的形状を直接指定せず、平坦性・広がり等の終端条件だけを与えた多自由度折り構造について、初期形状から低strain・非自己交差で到達した途中stateをarchiveし、そこから現在policyで再探索する。RLによって将来成功に有望な局所方向を学習し、explicitなreachable-state memoryと組み合わせることで、手設計metric sweep、RRT系、Pure RLより有限計算予算内の初回平坦経路発見を効率化できるかを検証する。**
+
+これは2026-10-26時点の作業仮説であり、最終研究目的・新規性の確定ではない。
+
+---
+
+# 18. 根拠と記録上の注意
+
+- 今日の中心的な整理は、2026-10-26の本人とChatGPTの会話を基にした。
+- 以前のZhou・LHS・NEB・T-RRT・Goal-set CHOMP・SMTO比較は、同月の会話・currentの既存記録を背景として統合した。
+- 9月以前のActor–Critic、多様解探索、転移の実験詳細は [history/](history/) を参照する。
+- 過去に得たfive等でのrandom超えは保存結果であり、今回再実行していない。
+- restart RLやorigami configuration-space探索の網羅的な文献調査はまだ完了していない。「主要文献で未発見」と「既往が存在しない」を区別する。
+- 新しい探索法の実装・比較実験はまだ行っていない。
