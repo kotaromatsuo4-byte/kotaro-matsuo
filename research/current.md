@@ -1023,6 +1023,373 @@ $$
 
 「unfoldができる」ではなく、**「将来成功を考慮したsequenceを経験から獲得できる」**が主張。
 
+
+### 2-flap例の具体的な実装案（2026-11-06追記）
+
+この例は、まず**2自由度のconfiguration spaceを完全に可視化できる最小構造**として実装する。
+
+#### 構造
+
+中央に固定した正方形panelを置き、その左右の対向辺に2枚の長方形flapをhinge接合する。
+
+基準寸法は、
+
+$
+W=1
+$
+
+として中央panelを
+
+$
+(0,0,0),\quad
+(1,0,0),\quad
+(1,1,0),\quad
+(0,1,0)
+$
+
+に置く。
+
+- left flap：中央panelの $x=0$ 側の辺をhinge軸とする。
+- right flap：中央panelの $x=1$ 側の辺をhinge軸とする。
+- 各長方形panelは既存モデルに合わせて2枚の三角形へ分割する。
+- 中央panelの節点は固定する。
+- 2枚のflapは剛な三角panelとして扱い、共有辺まわりの回転だけを許す。
+
+理想的には支持後のmechanism DOFが
+
+$
+n_m=2
+$
+
+となり、それぞれleft/right flapの回転に対応する。
+
+flapの奥行き $L$ は、
+
+$
+0.6W\sim0.9W
+$
+
+程度からparameter sweepする。
+
+#### Configuration coordinate
+
+left/right flapのhinge rotationを
+
+$
+q_L,\qquad q_R
+$
+
+とする。
+
+ここでは、
+
+$
+q_i=0
+$
+
+を「中央panel側へ十分畳まれたflat state」、
+
+$
+q_i\ \text{が増える方向}
+$
+
+を「そのflapを一度開く方向」と定義する。
+
+初期値候補は例えば、
+
+$
+q_L^0=20^\circ\sim40^\circ,
+\qquad
+q_R^0=60^\circ\sim120^\circ
+$
+
+とする。
+
+最終的な数値は固定せず、後述のconfiguration-space条件を満たす組合せを探索して決める。
+
+#### この例で本当に作りたい幾何学的性質
+
+単に「あるgreedy法が失敗する形」にするのではなく、次の3条件を満たすparameter setを探す。
+
+**条件1：goalへのcollision-free pathが存在する**
+
+初期configuration
+
+$
+q^0=(q_L^0,q_R^0)
+$
+
+からflat goal set
+
+$
+\mathcal G
+=
+\left\{
+(q_L,q_R)
+\mid
+q_L\le\varepsilon_q,\;
+q_R\le\varepsilon_q
+\right\}
+$
+
+まで、自己干渉しない連続経路が存在する。
+
+**条件2：両flapを単調に畳むだけではgoalへ行けない**
+
+すなわち、
+
+$
+\dot q_L\le0,
+\qquad
+\dot q_R\le0
+$
+
+を全経路で満たすcollision-free pathは存在しない。
+
+**条件3：成功経路では少なくとも一方を一度開く必要がある**
+
+例えばleft flapについて、
+
+$
+\max_t q_L(t)>q_L^0
+$
+
+となることが必要。
+
+典型的には、
+
+$
+(q_L^0,q_R^0)
+\rightarrow
+(q_L^{\rm open},q_R^0)
+\rightarrow
+(q_L^{\rm open},0)
+\rightarrow
+(0,0)
+$
+
+のように、
+
+1. blockerとなるleft flapを一度開く。
+2. right flapを先に畳む。
+3. 最後にleft flapを畳む。
+
+というsequenceを想定する。
+
+重要なのは、この順序を最初からRLへ教えることではない。
+
+#### まずconfiguration spaceを作って例題自体を検証する
+
+RLを回す前に、
+
+$
+(q_L,q_R)\in[0,\pi]^2
+$
+
+を格子状にsamplingし、各点でpanel-panel collisionを判定する。
+
+これにより2次元configuration space上に、
+
+- feasible region
+- collision region
+- initial state
+- flat goal set
+
+を描く。
+
+次にgrid graphを作り、
+
+1. **通常のgraph search**：上下左右すべてのfeasible neighborへ移動可能。
+2. **monotone graph search**：$q_L,q_R$ が増加するedgeを禁止。
+
+の2種類を実行する。
+
+狙う例題は、
+
+$
+\boxed{
+\text{unrestricted search：goalへ到達可能}
+}
+$
+
+かつ
+
+$
+\boxed{
+\text{monotone folding search：goalへ到達不能}
+}
+$
+
+となるもの。
+
+これを満たせば、
+
+> **この構造では、少なくとも一度「畳む向きと逆」の局所actionを取る必要がある**
+
+ことを、RLや川口型の成否とは独立にconfiguration space上で確認できる。
+
+この検証を先に行うことで、「RLがたまたま変な経路を選んだだけ」という説明にならないようにする。
+
+#### parameter search
+
+最初から寸法を手で決め打ちせず、
+
+- flap長さ $L/W$
+- 初期角 $q_L^0,q_R^0$
+- 必要ならflap幅・hinge位置
+
+を小さくgrid sweepし、上の条件1〜3を満たす例を自動探索する。
+
+候補例：
+
+$
+L/W\in
+\{0.6,0.7,0.8,0.9\}
+$
+
+$
+q_L^0\in
+\{20^\circ,30^\circ,40^\circ\},
+\qquad
+q_R^0\in
+\{60^\circ,80^\circ,100^\circ,120^\circ\}
+$
+
+まず粗く探索し、成立する近傍だけ細かく詰める。
+
+#### terminal stacking / contactの扱い
+
+2枚のflapを中央panel上へ収納する設定では、最終flat stateでpanel同士が接触・重なり得る。
+
+したがって実装時には、
+
+- terminal近傍のcontactを許容する。
+- あるいは非常に小さいlayer offsetを設けてstackingを表現する。
+
+など、**「収納時の接触」と「経路途中の貫通」を区別する**必要がある。
+
+この処理は例題の本質ではないので、数値上の都合で「最終接触をcollisionとして失敗扱い」にしないこと。
+
+#### 川口型との比較用の最小metric
+
+まず最も自然な局所収納metricとして、
+
+$
+R_{\rm local}
+=
+q_L^2+q_R^2
+$
+
+または既存コードのflatnessに対応する量を用いる。
+
+このmetricでは、各stepで
+
+$
+\Delta R_{\rm local}<0
+$
+
+となる方向を好むため、成功に必要な
+
+$
+q_L>q_L^0
+$
+
+という一時的unfoldを選びにくいことが期待される。
+
+ただし、この結果から
+
+> 「川口法ではこの構造を畳めない」
+
+とは主張しない。
+
+例えば、
+
+$
+R(q_L,q_R)
+=
+\left(q_L-q_L^*(q_R)\right)^2
++wq_R^2
+$
+
+のように正しいsequenceを事前に埋め込めば、川口型でも誘導可能だからである。
+
+この2-flap例で比較したいのは、
+
+> **単純で自然な局所収納metricでは正しいsequenceが自明でない一方、RLはterminal successから必要な一時的unfoldを経験的に獲得できるか**
+
+である。
+
+#### RL側で確認したいこと
+
+既存Pure RLをできるだけそのまま用い、
+
+- actionとして2つのmechanism modeの配合を選ぶ。
+- rewardへ「left flapを先に開け」というsequence情報は入れない。
+- terminal successをflat goalへの到達で定義する。
+- 必要なら弱いflatness shapingを使うが、unfoldを明示的にrewardしない。
+
+学習後に、
+
+$
+V(q_L,q_R)
+$
+
+またはpolicy actionをconfiguration space上へ可視化し、
+
+> 初期状態近傍で、局所flatnessを悪化させてもcollision-free goalへつながる側に高い将来価値が形成されるか
+
+を見る。
+
+ここまで確認できれば、
+
+$
+\boxed{
+\text{局所的な「畳まれ具合」ではなく、
+将来到達可能性に基づいてsequenceを獲得する}
+}
+$
+
+というRL採用理由を、非常に小さい構造で説明できる。
+
+#### 最終的に作りたい図
+
+この例では最低限、次の1枚を作る。
+
+横軸 $q_L$、縦軸 $q_R$ のconfiguration-space plotに、
+
+- collision region
+- feasible region
+- initial state
+- flat goal set
+- 単純metricに従うtrajectory
+- RL trajectory
+- 必要ならRLのvalue contour
+
+を重ねる。
+
+理想的には、
+
+> **単純metricはcollision側へ誘導される／停滞するが、RLは一度 $q_L$ を増加させて障害物を迂回し、その後goalへ入る**
+
+ことが一目で分かる図にする。
+
+### この実装例について特に誤解しないこと
+
+この例の目的は、
+
+> **「unfoldできる構造を解いた」ことを成果にすることではない。**
+
+また、
+
+> **「現実のdeployable structureの多くがこの2-flapと同じ動きをする」と主張するための例でもない。**
+
+これは、
+
+> **複雑なfolding sequenceでは、現在の局所的な収納性改善と将来の成功可能性が一致しないことがあり、成功へ導く中間誘導を事前に設計することが難しくなる**
+
+という一般的な問題を、2自由度で可視化するための**原理説明用toy problem**である。
+
+
 ---
 
 ## 20.2 川口型との小規模比較例
