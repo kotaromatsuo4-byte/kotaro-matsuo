@@ -1619,3 +1619,304 @@ deployable structuresでは、複雑な立体形状を限られた収納空間�
 本人の依頼で、`folding_path/00_1106_all/every_step_opt.py`では、修正子の適合残差ノルムが`tolerance`を超える候補を最良候補の選定から除外するよう変更した。CMA-ESの集団全体を更新するため、未収束候補も最悪の有限評価値を付けて`tell()`へ返す。探索終了までに収束した候補が一つも見つからなければ、そのstepで終了する。これにより、未収束候補の計量が小さいために、別の収束した候補を使わず終了してしまう問題を避ける。
 
 この変更時には、一時ディレクトリ内の短い検証で通常・一部未収束・全候補未収束の処理を確認した。一部・全候補未収束は検証用に意図的に作ったケースであり、自然な探索での失敗率や研究性能の測定ではない。今回のノート保存時に実験を再実行したわけではない。ひずみあり版の新しいmainや物理モデルは未実装であり、今後、幾何学的な許容ひずみ経路と操作条件下の弾性平衡経路のどちらを対象にするかを具体化する。
+
+
+---
+
+# 24. 2026-11-12：configuration space可視化による川口型との比較方針
+
+## 24.1 目的
+
+研究目的の妥当性を説明するため、**configuration spaceを可視化し、その上で「局所的に計量を下げる探索」がどのような経路を選ぶかを見る**ことを進める。
+
+比較の意図は、川口型のように**設計者側が定めた計量に基づいて局所的に探索方向を決める場合、その計量によっては到達できない、または到達しにくい状態が存在し得る**ことを可視化することにある。
+
+その上で、本研究では、
+
+> **現在状態で計量を下げることだけではなく、将来の成功を考慮して探索するフローの方が、最終的に「畳める経路を見つける」という目的により直接対応しているのではないか**
+
+という研究上の主張を検証したい。
+
+これは現時点では検証したい仮説であり、configuration-space上の比較結果を見た上で妥当性を判断する。
+
+## 24.2 4-bar linkageによる最初の可視化
+
+まず、2D.pyで4-bar linkageのconfiguration spaceを描いた。
+
+4-barは1自由度であり、2つの角度を状態変数として取ると、適合条件
+
+$$
+F(\alpha,\beta)=0
+$$
+
+を満たす点集合が2次元平面上の1次元compatibility pathとして現れる。
+
+このcompatibility pathに対して、
+
+- 初期形状
+- 平坦形状
+- 各configurationにおける幾何学的な計量
+
+を重ねて表示した。
+
+計量はpath上の点を色で表示し、configuration space上で「より畳まれている状態」がどのように分布するかを見るために用いた。
+
+4-barはconfiguration-space可視化の基本確認として有効だが、1自由度であるため、経路選択の問題を扱うには自由度が少ない。そこで次に2自由度系へ拡張する。
+
+## 24.3 5-bar linkageへの拡張
+
+次に、3D.pyで5-bar linkageのconfiguration spaceを描いた。
+
+5-barを
+
+$$
+O_L-A-C-B-O_R
+$$
+
+というclosed chainとし、固定節点間距離を $d$、各移動barの長さを
+
+$$
+l_1=|O_LA|,
+\qquad
+l_2=|AC|,
+\qquad
+l_3=|CB|,
+\qquad
+l_4=|BO_R|
+$$
+
+とする。
+
+状態変数として3つの絶対角
+
+$$
+\alpha=\angle(O_LA,+x),
+$$
+
+$$
+\beta=\angle(O_RB,+x),
+$$
+
+$$
+\gamma=\angle(AC,+x)
+$$
+
+を用いる。
+
+固定節点を
+
+$$
+O_L=(0,0),
+\qquad
+O_R=(d,0)
+$$
+
+とすると、
+
+$$
+A=
+\begin{bmatrix}
+l_1\cos\alpha\\
+l_1\sin\alpha
+\end{bmatrix},
+$$
+
+$$
+B=
+\begin{bmatrix}
+d+l_4\cos\beta\\
+l_4\sin\beta
+\end{bmatrix},
+$$
+
+$$
+C=
+A+
+\begin{bmatrix}
+l_2\cos\gamma\\
+l_2\sin\gamma
+\end{bmatrix}
+$$
+
+となる。
+
+残るbar $CB$ の長さ一定条件
+
+$$
+|B-C|=l_3
+$$
+
+を適合条件とすると、
+
+$$
+\boxed{
+F(\alpha,\beta,\gamma)
+=
+\left(
+d+l_4\cos\beta-l_1\cos\alpha-l_2\cos\gamma
+\right)^2
++
+\left(
+l_4\sin\beta-l_1\sin\alpha-l_2\sin\gamma
+\right)^2
+-l_3^2
+=0
+}
+$$
+
+を得る。
+
+3変数に対して独立な拘束条件が1つなので、正則点では
+
+$$
+3-1=2
+$$
+
+自由度となり、
+
+$$
+\mathcal C
+=
+\left\{
+(\alpha,\beta,\gamma)
+\mid
+F(\alpha,\beta,\gamma)=0
+\right\}
+$$
+
+は3次元空間内の2次元曲面として現れる。
+
+実装では、$(\alpha,\beta)$ を与えたときの $\gamma$ を解析的に求めている。
+
+$$
+\mathbf r=B-A,
+\qquad
+\rho=|\mathbf r|,
+\qquad
+\theta=\operatorname{atan2}(r_y,r_x)
+$$
+
+とすると、
+
+$$
+\cos(\gamma-\theta)
+=
+\frac{\rho^2+l_2^2-l_3^2}
+{2l_2\rho}
+$$
+
+より、
+
+$$
+\boxed{
+\gamma_\pm
+=
+\theta
+\pm
+\arccos
+\left(
+\frac{\rho^2+l_2^2-l_3^2}
+{2l_2\rho}
+\right)
+}
+$$
+
+となる。
+
+このため、現在の5-barでは同じ $(\alpha,\beta)$ に対して2つのassembly modeが存在し、3次元configuration spaceは $\gamma_+$ と $\gamma_-$ に対応する2枚のsurfaceとして表示される。
+
+なお、**2自由度系だから一般にsurfaceが2枚になるわけではない**。今回2枚になるのは、この5-barについて同じ $(\alpha,\beta)$ に対する節点 $C$ の位置が通常2通り存在するためである。
+
+現在はこの3D surface上に、ユーザーが指定した
+
+- initial state
+- flat states
+
+を点として重ねて表示している。
+
+## 24.4 2次元configuration landscapeへ落とす方針
+
+3次元空間内のconfiguration surfaceは、5-barの幾何学的なconfiguration spaceを理解するためには有効である。
+
+一方、最終的に川口型の探索経路と比較する図としては、T-RRTで用いられているような、**2次元のlandscape上に評価値とtrajectoryを重ねる表示**の方が分かりやすいと考えている。
+
+そのため、次の段階では5-barのconfiguration spaceを $(\alpha,\beta)$ の2次元平面へ落とし、
+
+- configurationの存在領域
+- 計量
+- 衝突領域
+- 初期状態
+- 平坦状態
+- 川口型によるtrajectory
+
+を同じ図上で確認できる形を目指す。
+
+## 24.5 現時点の問題点
+
+### A. 衝突がまだ考慮されていない
+
+現在の3D.pyで用いている存在条件は、
+
+$$
+\left|
+\frac{\rho^2+l_2^2-l_3^2}
+{2l_2\rho}
+\right|
+\le 1
+$$
+
+であり、これはbar $l_3$ を含めて5-barのgeometryが成立するかどうか、すなわちcompatibilityのみを判定している。
+
+現時点ではbar同士の自己交差・衝突は考慮していない。
+
+したがって、現在表示されているconfiguration surfaceには、geometryとしては適合するが、実際のfolding pathとしては衝突するconfigurationも含まれている可能性がある。
+
+次の段階では、configuration space上で衝突領域を区別できるようにしたい。
+
+### B. $(\alpha,\beta)$ への射影では2つのassembly modeが重なる
+
+現在の5-barでは、
+
+$$
+\gamma_+(\alpha,\beta),
+\qquad
+\gamma_-(\alpha,\beta)
+$$
+
+という2つのconfigurationが存在する。
+
+したがって3次元configuration spaceを単純に
+
+$$
+(\alpha,\beta,\gamma)
+\longrightarrow
+(\alpha,\beta)
+$$
+
+と射影すると、異なる2つのassembly modeが同じ $(\alpha,\beta)$ に重なる。
+
+このため、2次元configuration landscapeとしてどのように表示・管理するかは未決定であり、今後検討する。
+
+## 24.6 最終的に可視化したいもの
+
+最終的には、2次元configuration landscape上に川口型のようなmetric-driven searchで実際にたどられるtrajectoryを重ねたい。
+
+この図を通して、
+
+> **設計者が与えた局所計量を逐次改善する探索が、configuration space上でどの方向へ進み、どの状態へ到達するのか**
+
+を明示する。
+
+その結果として、局所的な計量改善だけでは望ましいflat stateへ到達できない例が得られるかを検証し、
+
+$$
+\boxed{
+\text{local metric improvement}
+\neq
+\text{future folding success}
+}
+$$
+
+となる問題の存在を、configuration space上で説明できるかを確認する。
+
+この比較は「川口法では一般に解けない」と結論するためのものではなく、**設計者が事前に定める計量に依存した探索と、将来の成功を考慮する探索フローの違いを可視化するための検討**として位置付ける。
