@@ -40,15 +40,6 @@
 - 更新時はファイル全体の数式区切り、波括弧、LaTeX環境の対応とGitHubプレビューでの表示を確認する。数式記法の修正では、数式の内容・数値・研究上の意味を変えない。
 - 対応記法は [GitHub公式ドキュメント](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/writing-mathematical-expressions) を参照する。
 
-## グラフ・図の描画
-
-- matplotlibの設定は `folding_path/00_1106_all/configuration_space/2D.py` を基準にする。本人から個別指定がある場合はそちらを優先する。
-- 線・マーカー・系列などの色は、なるべく白黒の濃淡で表現する。系列や状態の区別には線種・マーカー形状も使い、matplotlibの既定の色循環で不用意に多色化しない。
-- ポテンシャルなど連続した評価値を色で示す場合は、カラーマップを `viridis` にする。`image.cmap = "viridis"` を基本設定とし、描画関数に必要なら `cmap="viridis"` を明示する。評価値の色分けにはカラーバーを付ける。
-- フォントは `font.family = "Times New Roman"` とする。基準サイズは `font.size = 12`、`axes.labelsize = 12`、`xtick.labelsize = 10`、`ytick.labelsize = 10`、`legend.fontsize = 10`。3Dのz軸目盛りも同じ方針でそろえる。
-- 軸枠の基準は `axes.linewidth = 0.9`、補助的な原点軸は黒・線幅0.8とし、保存時は `savefig.dpi = 600` を基準にする。サイズ・線幅は図の用途に応じて調整できるが、同じ比較図ではそろえる。
-- 初期状態・平坦状態などは白黒の濃淡と異なるマーカー形状で区別する。角度軸は必要に応じてπ表記を使い、同じ尺度の2軸を比較する図では等倍表示を基本とする。
-
 ## 根拠と比較条件
 
 - historyは読みやすく要約するが、単なる概観に縮めない。ori/main等の版の責務、変更理由、比較条件、結果、採否、次へ進んだ理由を詳しく残す。概観はoverviewの役割。
