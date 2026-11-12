@@ -13,9 +13,9 @@
 
 本人が現在重視している条件は次の通り。
 
-- 初期形状 $x_0$ は与える。
-- 具体的な目的節点座標 $x_T$ は与えない。
-- 終状態には平坦性と、必要に応じて広がり $D^*$ などの性質を指定する。
+- 初期形状 $`x_0`$ は与える。
+- 具体的な目的節点座標 $`x_T`$ は与えない。
+- 終状態には平坦性と、必要に応じて広がり $`D^*`$ などの性質を指定する。
 - 初期形状から終状態までの経路は連続であること。
 - 自己交差などの不適切な状態を避けること。
 - 今後は弾性変形・ひずみを許容する物理モデルを扱う。
@@ -24,11 +24,11 @@
 
 「選択的に平坦状態を探す」とは、具体的な終点座標を指定することではなく、
 
-$$
+```math
 F(x_T)\le \varepsilon_F,
 \qquad
 |D(x_T)-D^*|\le \varepsilon_D
-$$
+```
 
 のように、**終状態の性質だけを指定して、その条件を満たす未知の形状を探す**ことを指す。
 
@@ -86,9 +86,9 @@ $$
 
 RLに期待する本質は、
 
-$$
+```math
 a\sim\pi_\theta(a\mid s)
-$$
+```
 
 として、同じ問題内の過去rolloutから、
 
@@ -98,27 +98,27 @@ $$
 
 RRTの主な探索圧は、Voronoi bias等による
 
-$$
+```math
 \boxed{\text{未探索領域へのspace-filling}}
-$$
+```
 
 である。
 
 RLでは、
 
-$$
+```math
 \boxed{\text{将来成功しそうな方向へのstate-dependent bias}}
-$$
+```
 
 を学習できる可能性がある。
 
 特に意味があるのは、現在のflatnessをただ改善する方向ではなく、
 
-$$
+```math
 \text{一時的なflatness/strain悪化}
 \rightarrow
 \text{最終的な成功}
-$$
+```
 
 という長期的関係をreturn/valueから学習する場合。
 
@@ -140,23 +140,23 @@ $$
 
 例えば一度、
 
-$$
+```math
 x_0\rightarrow x_1\rightarrow x_2
-$$
+```
 
-までかなり有望に進んだ後に失敗しても、Pure RLでは次episodeにまた $x_0$ から開始する。
+までかなり有望に進んだ後に失敗しても、Pure RLでは次episodeにまた $`x_0`$ から開始する。
 
-RRTなら $x_2$ がtreeに残るため、
+RRTなら $`x_2`$ がtreeに残るため、
 
-$$
+```math
 x_2\rightarrow A
-$$
+```
 
 が失敗した後、
 
-$$
+```math
 x_2\rightarrow B
-$$
+```
 
 を試せる。
 
@@ -166,15 +166,15 @@ $$
 
 過去に実際に到達したstateをarchiveし、
 
-$$
+```math
 \mathcal A=\{c_0,c_1,\ldots,c_M\}
-$$
+```
 
 次episodeの一部をarchive中のstateから開始する。
 
-checkpoint $c_i$ には、単なるconfigurationだけでなく、
+checkpoint $`c_i`$ には、単なるconfigurationだけでなく、
 
-$$
+```math
 c_i=
 \left(
 x_i,\,
@@ -183,27 +183,27 @@ B_i,\,
 F_i,\,
 D_i,\ldots
 \right)
-$$
+```
 
 を保持する案がある。
 
-- $x_i$：途中形状
-- $P_i$：初期状態からそこまでのprefix path
-- $B_i$：prefix中の最大strain等のpath-dependent量
-- $F_i$：flatness
-- $D_i$：spread
+- $`x_i`$：途中形状
+- $`P_i`$：初期状態からそこまでのprefix path
+- $`B_i`$：prefix中の最大strain等のpath-dependent量
+- $`F_i`$：flatness
+- $`D_i`$：spread
 
-低strain pathを扱う場合、同じconfiguration $x$ に到達しても、
+低strain pathを扱う場合、同じconfiguration $`x`$ に到達しても、
 
-$$
+```math
 B=0.5\%
-$$
+```
 
 で来た場合と、
 
-$$
+```math
 B=3.0\%
-$$
+```
 
 で来た場合は同じcheckpointとして扱えない可能性がある。
 
@@ -215,7 +215,7 @@ $$
 
 昔のpolicyで
 
-$$
+```math
 x_0
 \xrightarrow{a_0^{old}}
 x_1
@@ -223,17 +223,17 @@ x_1
 x_2
 \xrightarrow{a_2^{old}}
 x_3
-$$
+```
 
-まで到達し、$x_3$ を保存したとする。
+まで到達し、$`x_3`$ を保存したとする。
 
-その後、現在policyで $x_3$ から再開して、
+その後、現在policyで $`x_3`$ から再開して、
 
-$$
+```math
 x_3\rightarrow x_4\rightarrow\cdots\rightarrow x_T
-$$
+```
 
-と成功した場合、その成功rewardを、昔のprefix $x_0\to x_3$ のpolicyへどう反映すべきか。
+と成功した場合、その成功rewardを、昔のprefix $`x_0\to x_3`$ のpolicyへどう反映すべきか。
 
 ## 5.2 現時点の整理
 
@@ -241,9 +241,9 @@ checkpoint以降のsuffixは現在policyで生成するため、Actorのon-polic
 
 一方、古いprefixのactionは旧policyで生成されているので、新しいsuffix rewardを
 
-$$
+```math
 \nabla_\theta\log\pi_\theta(a_t^{old}\mid s_t)G_t
-$$
+```
 
 として現在Actorへ直接流すのは、off-policy補正なしでは不適切。
 
@@ -253,23 +253,21 @@ $$
    checkpointから現在policyで新しいsuffixを探索し、Actorはsuffixだけでon-policy更新する。
 
 2. **Critic**  
-   archive-startで得た結果からcheckpointの価値 $V(s_k)$ を学習する。
+   archive-startで得た結果からcheckpointの価値 $`V(s_k)`$ を学習する。
 
 3. **Root-start episode**  
-   一定割合のepisodeは本来の $x_0$ から現在policyで開始する。
+   一定割合のepisodeは本来の $`x_0`$ から現在policyで開始する。
 
 4. **価値伝播**  
    TD型Criticなら、
 
-   $$
-   V(s_t)\approx r_t+\gamma V(s_{t+1})
-   $$
+   $$V(s_t)\approx r_t+\gamma V(s_{t+1})$$
 
    により、archiveで得た価値をroot側へ徐々に伝播できる。
 
 つまり、
 
-$$
+```math
 \boxed{
 \text{archiveから先を探索}
 \rightarrow
@@ -279,7 +277,7 @@ V(\text{checkpoint})\text{を改善}
 \rightarrow
 \text{prefix policyへ価値を伝播}
 }
-$$
+```
 
 という構成。
 
@@ -291,19 +289,19 @@ $$
 
 training時のstart-state distributionを、
 
-$$
+```math
 P(\text{root start})=\alpha,
 \qquad
 P(\text{archive start})=1-\alpha
-$$
+```
 
 とする案。
 
 archive-startだけにすると、checkpoint以降のpolicyは改善しても、
 
-$$
+```math
 x_0\rightarrow x_i
-$$
+```
 
 へ到達するpolicyが学習されない／忘れられる可能性がある。
 
@@ -311,7 +309,7 @@ $$
 
 ここで今後重要になるのは、
 
-- $\alpha$ を固定するか適応的にするか
+- $`\alpha`$ を固定するか適応的にするか
 - archiveからどのcheckpointを選択するか
 
 である。
@@ -342,9 +340,9 @@ $$
 
 したがって、現在の候補手法は、
 
-$$
+```math
 \boxed{\text{restart RLをorigamiへ適用}}
-$$
+```
 
 だけでは不十分。
 
@@ -375,23 +373,23 @@ $$
 
 Zhouらでは、
 
-$$
+```math
 \text{LHS＋局所最適化}
-$$
+```
 
 でstable stateを探索し、
 
-$$
+```math
 \text{NEB}
-$$
+```
 
 で既知のstate pair間のlow-energy pathを求める。
 
 LHSでstateが見つかっても、
 
-$$
+```math
 x_0\rightarrow x_T
-$$
+```
 
 が初期状態から、
 
@@ -419,17 +417,17 @@ $$
 
 川口法でも、目的形状を一点指定せず、ある計量
 
-$$
+```math
 r=\mathcal R(x)
-$$
+```
 
 を改善するように折り進められる。
 
 さらに、
 
-$$
+```math
 \mathcal R_1,\mathcal R_2,\ldots
-$$
+```
 
 と計量を多数変えて高速に試せば、未知平坦状態を探索できる。
 
@@ -443,37 +441,37 @@ $$
 
 川口型では、
 
-$$
+```math
 \boxed{\text{探索heuristicとなる計量を人間が事前に設計する}}
-$$
+```
 
 のに対して、現在のRL案では、
 
-$$
+```math
 \boxed{\text{終端条件だけを与え、途中状態・行動の価値を探索経験から学ぶ}}
-$$
+```
 
 ことを目指す。
 
 例えば川口型では、
 
-$$
+```math
 \mathcal R(x)
-$$
+```
 
 が現在stateの「良さ」を表す。
 
 RLでは、
 
-$$
+```math
 V(x)
-$$
+```
 
 または
 
-$$
+```math
 Q(x,a)
-$$
+```
 
 によって、
 
@@ -483,19 +481,19 @@ $$
 
 つまり、
 
-$$
+```math
 \boxed{
 \text{現在の幾何学的良さ}
 \neq
 \text{将来の到達可能性}
 }
-$$
+```
 
 を学習対象にする。
 
-「別の計量 $r_2$ を設計すれば川口法でも見つけられる」という反論に対しては、
+「別の計量 $`r_2`$ を設計すれば川口法でも見つけられる」という反論に対しては、
 
-> **その $r_2$ を事前にどう設計するか自体が問題であり、本研究では成功・失敗した探索経験から中間state/actionの価値尺度を獲得する**
+> **その $`r_2`$ を事前にどう設計するか自体が問題であり、本研究では成功・失敗した探索経験から中間state/actionの価値尺度を獲得する**
 
 という位置付けが候補。
 
@@ -503,17 +501,17 @@ $$
 
 metric sweepでは、
 
-$$
+```math
 r_1\rightarrow path_1,\qquad
 r_2\rightarrow path_2,\qquad
 \cdots
-$$
+```
 
 と複数試行できるが、それぞれの試行結果を使って次の探索heuristicが自動的に改善されるわけではない。
 
 現在の候補法では、
 
-$$
+```math
 \text{trial}
 \rightarrow
 \text{state/archive・成功失敗情報を保存}
@@ -521,19 +519,19 @@ $$
 \text{policy/value更新}
 \rightarrow
 \text{次の計算資源配分を変更}
-$$
+```
 
 とする。
 
 したがって比較仮説は、
 
-$$
+```math
 \boxed{
 \text{hand-designed non-adaptive metric sweep}
 \quad\text{vs}\quad
 \text{outcome-adaptive learned search}
 }
-$$
+```
 
 となる。
 
@@ -559,9 +557,9 @@ $$
 
 本人の現時点の意向：
 
-$$
+```math
 \boxed{\text{低strainな成功pathを、できるだけ早く初回発見する}}
-$$
+```
 
 無限計算時間での完全探索ではなく、有限予算内の探索効率を問題にする。
 
@@ -569,11 +567,11 @@ $$
 
 候補：
 
-$$
+```math
 F(x_T)\le\varepsilon_F,
 \qquad
 |D(x_T)-D^*|\le\varepsilon_D
-$$
+```
 
 具体的な目的座標は指定しない。
 
@@ -583,11 +581,11 @@ strainをどの物理量で定義するかは未確定。
 
 候補として、経路中最大strain
 
-$$
+```math
 B(\tau)
 =
 \max_t \varepsilon_{\max}(x_t)
-$$
+```
 
 を用いる。
 
@@ -647,7 +645,7 @@ $$
 
 単独要素ではなく、次の**探索構造と問題設定の組合せ**。
 
-1. 目的形状ではなくflatness／$D^*$等のterminal conditionのみを指定。
+1. 目的形状ではなくflatness／$`D^*`$等のterminal conditionのみを指定。
 2. rootから実際にfeasibleに到達したstateとprefixを明示archive。
 3. 過去rolloutから、将来成功に有望な局所actionをstate-dependentに学習。
 4. archive stateからrestartして、同じprefix計算を繰り返さずfrontierを拡張。
@@ -676,7 +674,7 @@ $$
 候補情報：
 
 - flatness progress
-- $D^*$ への接近
+- $`D^*`$ への接近
 - prefix strain
 - novelty／未探索性
 - visit count
@@ -688,15 +686,15 @@ restart選択則自体を手設計するのか、bandit／value／別policyで�
 
 ### C. Root-start / Archive-startの配分
 
-$$
+```math
 P(\text{root})=\alpha
-$$
+```
 
 を固定するか、学習進捗に応じて変えるか。
 
 ### D. Critic
 
-現在のMonte Carlo $V(s)$ のままか、TD/GAEでarchiveから得た価値をroot側へ早く伝播させるか。
+現在のMonte Carlo $`V(s)`$ のままか、TD/GAEでarchiveから得た価値をroot側へ早く伝播させるか。
 
 SACへの全面移行は一旦保留。
 
@@ -784,17 +782,17 @@ SACへの全面移行は一旦保留。
 
 として、各stepで
 
-$$
+```math
 \Delta x_t=\sum_k a_{t,k}m_{t,k}
-$$
+```
 
 のように機構モードの配合を選ぶ逐次意思決定問題として扱うもの。
 
 当初RLを選んだ主な理由は、現在のflatnessを毎step単調に改善するだけでなく、
 
-$$
+```math
 G_t=r_t+\gamma r_{t+1}+\gamma^2 r_{t+2}+\cdots
-$$
+```
 
 という将来returnを通じて、**一時的に評価値が悪化しても最終的な平坦化につながるactionを評価できる**と考えたため。
 
@@ -828,11 +826,11 @@ five bar／torusの結果は、
 
 これに対して、月面・宇宙輸送などで限られた収納空間へ構造物を格納する必要がある、という応用例を説明したが、
 
-$$
+```math
 \text{用途がある}
 \;\Rightarrow\;
 \text{なぜこの探索手法が必要か}
-$$
+```
 
 まで十分につながらず、説得力が弱かった。
 
@@ -848,41 +846,41 @@ $$
 
 ## 19.3 川口型との対比：現在考えている本質
 
-川口型を抽象化すると、現在configuration $x$ に対して人間が
+川口型を抽象化すると、現在configuration $`x`$ に対して人間が
 
-$$
+```math
 R(x)
-$$
+```
 
 というgeometrical measurer／探索heuristicを設計し、その計量に基づいて折り方向を選択する方法とみなせる。
 
 これに対してRLでは、成功・失敗したrolloutから
 
-$$
+```math
 V(s),\qquad \pi(a\mid s)
-$$
+```
 
 を学習し、**どの途中state／actionが将来の成功につながるか**を経験から獲得する。
 
 現在の有力な対比は、
 
-$$
+```math
 \boxed{\text{hand-designed guidance}}
 \qquad\text{vs}\qquad
 \boxed{\text{learned guidance}}
-$$
+```
 
 である。
 
 特に重要なのは、
 
-$$
+```math
 \boxed{
 \text{現在のconfigurationとしての良さ}
 \neq
 \text{そこから将来成功できる価値}
 }
-$$
+```
 
 となる場合。
 
@@ -912,11 +910,11 @@ RLの候補的な価値は、
 
 合理的な川口型計量ではうまく折れない、または非常に探索しにくい例があり、
 
-$$
+```math
 \text{川口型}\rightarrow\text{失敗／著しく非効率},
 \qquad
 \text{提案法}\rightarrow\text{成功}
-$$
+```
 
 を、その原因まで含めて示せる場合。
 
@@ -974,11 +972,11 @@ $$
 
 例えば成功経路が、
 
-$$
+```math
 F:
 1.0\rightarrow1.3\rightarrow1.5
 \rightarrow0.8\rightarrow0
-$$
+```
 
 のように、一時的にflatness等を悪化させる必要があるとする。
 
@@ -1007,11 +1005,11 @@ $$
 
 川口型でも、
 
-$$
+```math
 R(q_L,q_R)
 =
 (q_L-q_L^*(q_R))^2+wq_R^2
-$$
+```
 
 のように、正しいsequenceをあらかじめ計量へ埋め込めばunfold→refoldを誘導できる。
 
@@ -1034,40 +1032,40 @@ $$
 
 基準寸法は、
 
-$
+```math
 W=1
-$
+```
 
 として中央panelを
 
-$
+```math
 (0,0,0),\quad
 (1,0,0),\quad
 (1,1,0),\quad
 (0,1,0)
-$
+```
 
 に置く。
 
-- left flap：中央panelの $x=0$ 側の辺をhinge軸とする。
-- right flap：中央panelの $x=1$ 側の辺をhinge軸とする。
+- left flap：中央panelの $`x=0`$ 側の辺をhinge軸とする。
+- right flap：中央panelの $`x=1`$ 側の辺をhinge軸とする。
 - 各長方形panelは既存モデルに合わせて2枚の三角形へ分割する。
 - 中央panelの節点は固定する。
 - 2枚のflapは剛な三角panelとして扱い、共有辺まわりの回転だけを許す。
 
 理想的には支持後のmechanism DOFが
 
-$
+```math
 n_m=2
-$
+```
 
 となり、それぞれleft/right flapの回転に対応する。
 
-flapの奥行き $L$ は、
+flapの奥行き $`L`$ は、
 
-$
+```math
 0.6W\sim0.9W
-$
+```
 
 程度からparameter sweepする。
 
@@ -1075,33 +1073,33 @@ $
 
 left/right flapのhinge rotationを
 
-$
+```math
 q_L,\qquad q_R
-$
+```
 
 とする。
 
 ここでは、
 
-$
+```math
 q_i=0
-$
+```
 
 を「中央panel側へ十分畳まれたflat state」、
 
-$
+```math
 q_i\ \text{が増える方向}
-$
+```
 
 を「そのflapを一度開く方向」と定義する。
 
 初期値候補は例えば、
 
-$
+```math
 q_L^0=20^\circ\sim40^\circ,
 \qquad
 q_R^0=60^\circ\sim120^\circ
-$
+```
 
 とする。
 
@@ -1115,13 +1113,13 @@ $
 
 初期configuration
 
-$
+```math
 q^0=(q_L^0,q_R^0)
-$
+```
 
 からflat goal set
 
-$
+```math
 \mathcal G
 =
 \left\{
@@ -1130,7 +1128,7 @@ $
 q_L\le\varepsilon_q,\;
 q_R\le\varepsilon_q
 \right\}
-$
+```
 
 まで、自己干渉しない連続経路が存在する。
 
@@ -1138,11 +1136,11 @@ $
 
 すなわち、
 
-$
+```math
 \dot q_L\le0,
 \qquad
 \dot q_R\le0
-$
+```
 
 を全経路で満たすcollision-free pathは存在しない。
 
@@ -1150,15 +1148,15 @@ $
 
 例えばleft flapについて、
 
-$
+```math
 \max_t q_L(t)>q_L^0
-$
+```
 
 となることが必要。
 
 典型的には、
 
-$
+```math
 (q_L^0,q_R^0)
 \rightarrow
 (q_L^{\rm open},q_R^0)
@@ -1166,7 +1164,7 @@ $
 (q_L^{\rm open},0)
 \rightarrow
 (0,0)
-$
+```
 
 のように、
 
@@ -1182,9 +1180,9 @@ $
 
 RLを回す前に、
 
-$
+```math
 (q_L,q_R)\in[0,\pi]^2
-$
+```
 
 を格子状にsamplingし、各点でpanel-panel collisionを判定する。
 
@@ -1200,25 +1198,25 @@ $
 次にgrid graphを作り、
 
 1. **通常のgraph search**：上下左右すべてのfeasible neighborへ移動可能。
-2. **monotone graph search**：$q_L,q_R$ が増加するedgeを禁止。
+2. **monotone graph search**：$`q_L,q_R`$ が増加するedgeを禁止。
 
 の2種類を実行する。
 
 狙う例題は、
 
-$
+```math
 \boxed{
 \text{unrestricted search：goalへ到達可能}
 }
-$
+```
 
 かつ
 
-$
+```math
 \boxed{
 \text{monotone folding search：goalへ到達不能}
 }
-$
+```
 
 となるもの。
 
@@ -1234,26 +1232,26 @@ $
 
 最初から寸法を手で決め打ちせず、
 
-- flap長さ $L/W$
-- 初期角 $q_L^0,q_R^0$
+- flap長さ $`L/W`$
+- 初期角 $`q_L^0,q_R^0`$
 - 必要ならflap幅・hinge位置
 
 を小さくgrid sweepし、上の条件1〜3を満たす例を自動探索する。
 
 候補例：
 
-$
+```math
 L/W\in
 \{0.6,0.7,0.8,0.9\}
-$
+```
 
-$
+```math
 q_L^0\in
 \{20^\circ,30^\circ,40^\circ\},
 \qquad
 q_R^0\in
 \{60^\circ,80^\circ,100^\circ,120^\circ\}
-$
+```
 
 まず粗く探索し、成立する近傍だけ細かく詰める。
 
@@ -1274,25 +1272,25 @@ $
 
 まず最も自然な局所収納metricとして、
 
-$
+```math
 R_{\rm local}
 =
 q_L^2+q_R^2
-$
+```
 
 または既存コードのflatnessに対応する量を用いる。
 
 このmetricでは、各stepで
 
-$
+```math
 \Delta R_{\rm local}<0
-$
+```
 
 となる方向を好むため、成功に必要な
 
-$
+```math
 q_L>q_L^0
-$
+```
 
 という一時的unfoldを選びにくいことが期待される。
 
@@ -1304,12 +1302,12 @@ $
 
 例えば、
 
-$
+```math
 R(q_L,q_R)
 =
 \left(q_L-q_L^*(q_R)\right)^2
 +wq_R^2
-$
+```
 
 のように正しいsequenceを事前に埋め込めば、川口型でも誘導可能だからである。
 
@@ -1330,9 +1328,9 @@ $
 
 学習後に、
 
-$
+```math
 V(q_L,q_R)
-$
+```
 
 またはpolicy actionをconfiguration space上へ可視化し、
 
@@ -1342,12 +1340,12 @@ $
 
 ここまで確認できれば、
 
-$
+```math
 \boxed{
 \text{局所的な「畳まれ具合」ではなく、
 将来到達可能性に基づいてsequenceを獲得する}
 }
-$
+```
 
 というRL採用理由を、非常に小さい構造で説明できる。
 
@@ -1355,7 +1353,7 @@ $
 
 この例では最低限、次の1枚を作る。
 
-横軸 $q_L$、縦軸 $q_R$ のconfiguration-space plotに、
+横軸 $`q_L`$、縦軸 $`q_R`$ のconfiguration-space plotに、
 
 - collision region
 - feasible region
@@ -1369,7 +1367,7 @@ $
 
 理想的には、
 
-> **単純metricはcollision側へ誘導される／停滞するが、RLは一度 $q_L$ を増加させて障害物を迂回し、その後goalへ入る**
+> **単純metricはcollision側へ誘導される／停滞するが、RLは一度 $`q_L`$ を増加させて障害物を迂回し、その後goalへ入る**
 
 ことが一目で分かる図にする。
 
@@ -1473,9 +1471,9 @@ Bunnyは、
 
 つまり、
 
-$$
+```math
 \boxed{\text{Bunny = applicability / complexity benchmark}}
-$$
+```
 
 である。
 
@@ -1516,17 +1514,17 @@ Stanford Bunny等。
 
 この三者の役割を混ぜない。
 
-$$
+```math
 \boxed{\text{toy example = Why}}
-$$
+```
 
-$$
+```math
 \boxed{\text{quantitative examples = How well}}
-$$
+```
 
-$$
+```math
 \boxed{\text{hero demo = What can it handle}}
-$$
+```
 
 という整理。
 
@@ -1645,9 +1643,9 @@ deployable structuresでは、複雑な立体形状を限られた収納空間�
 
 4-barは1自由度であり、2つの角度を状態変数として取ると、適合条件
 
-$$
+```math
 F(\alpha,\beta)=0
-$$
+```
 
 を満たす点集合が2次元平面上の1次元compatibility pathとして現れる。
 
@@ -1669,13 +1667,13 @@ $$
 
 5-barを
 
-$$
+```math
 O_L-A-C-B-O_R
-$$
+```
 
-というclosed chainとし、固定節点間距離を $d$、各移動barの長さを
+というclosed chainとし、固定節点間距離を $`d`$、各移動barの長さを
 
-$$
+```math
 l_1=|O_LA|,
 \qquad
 l_2=|AC|,
@@ -1683,72 +1681,72 @@ l_2=|AC|,
 l_3=|CB|,
 \qquad
 l_4=|BO_R|
-$$
+```
 
 とする。
 
 状態変数として3つの絶対角
 
-$$
+```math
 \alpha=\angle(O_LA,+x),
-$$
+```
 
-$$
+```math
 \beta=\angle(O_RB,+x),
-$$
+```
 
-$$
+```math
 \gamma=\angle(AC,+x)
-$$
+```
 
 を用いる。
 
 固定節点を
 
-$$
+```math
 O_L=(0,0),
 \qquad
 O_R=(d,0)
-$$
+```
 
 とすると、
 
-$$
+```math
 A=
 \begin{bmatrix}
 l_1\cos\alpha\\
 l_1\sin\alpha
 \end{bmatrix},
-$$
+```
 
-$$
+```math
 B=
 \begin{bmatrix}
 d+l_4\cos\beta\\
 l_4\sin\beta
 \end{bmatrix},
-$$
+```
 
-$$
+```math
 C=
 A+
 \begin{bmatrix}
 l_2\cos\gamma\\
 l_2\sin\gamma
 \end{bmatrix}
-$$
+```
 
 となる。
 
-残るbar $CB$ の長さ一定条件
+残るbar $`CB`$ の長さ一定条件
 
-$$
+```math
 |B-C|=l_3
-$$
+```
 
 を適合条件とすると、
 
-$$
+```math
 \boxed{
 F(\alpha,\beta,\gamma)
 =
@@ -1762,19 +1760,19 @@ l_4\sin\beta-l_1\sin\alpha-l_2\sin\gamma
 -l_3^2
 =0
 }
-$$
+```
 
 を得る。
 
 3変数に対して独立な拘束条件が1つなので、正則点では
 
-$$
+```math
 3-1=2
-$$
+```
 
 自由度となり、
 
-$$
+```math
 \mathcal C
 =
 \left\{
@@ -1782,32 +1780,32 @@ $$
 \mid
 F(\alpha,\beta,\gamma)=0
 \right\}
-$$
+```
 
 は3次元空間内の2次元曲面として現れる。
 
-実装では、$(\alpha,\beta)$ を与えたときの $\gamma$ を解析的に求めている。
+実装では、$`(\alpha,\beta)`$ を与えたときの $`\gamma`$ を解析的に求めている。
 
-$$
+```math
 \mathbf r=B-A,
 \qquad
 \rho=|\mathbf r|,
 \qquad
-\theta=\operatorname{atan2}(r_y,r_x)
-$$
+\theta=\mathrm{atan2}(r_y,r_x)
+```
 
 とすると、
 
-$$
+```math
 \cos(\gamma-\theta)
 =
 \frac{\rho^2+l_2^2-l_3^2}
 {2l_2\rho}
-$$
+```
 
 より、
 
-$$
+```math
 \boxed{
 \gamma_\pm
 =
@@ -1819,13 +1817,13 @@ $$
 {2l_2\rho}
 \right)
 }
-$$
+```
 
 となる。
 
-このため、現在の5-barでは同じ $(\alpha,\beta)$ に対して2つのassembly modeが存在し、3次元configuration spaceは $\gamma_+$ と $\gamma_-$ に対応する2枚のsurfaceとして表示される。
+このため、現在の5-barでは同じ $`(\alpha,\beta)`$ に対して2つのassembly modeが存在し、3次元configuration spaceは $`\gamma_+`$ と $`\gamma_-`$ に対応する2枚のsurfaceとして表示される。
 
-なお、**2自由度系だから一般にsurfaceが2枚になるわけではない**。今回2枚になるのは、この5-barについて同じ $(\alpha,\beta)$ に対する節点 $C$ の位置が通常2通り存在するためである。
+なお、**2自由度系だから一般にsurfaceが2枚になるわけではない**。今回2枚になるのは、この5-barについて同じ $`(\alpha,\beta)`$ に対する節点 $`C`$ の位置が通常2通り存在するためである。
 
 現在はこの3D surface上に、ユーザーが指定した
 
@@ -1840,7 +1838,7 @@ $$
 
 一方、最終的に川口型の探索経路と比較する図としては、T-RRTで用いられているような、**2次元のlandscape上に評価値とtrajectoryを重ねる表示**の方が分かりやすいと考えている。
 
-そのため、次の段階では5-barのconfiguration spaceを $(\alpha,\beta)$ の2次元平面へ落とし、
+そのため、次の段階では5-barのconfiguration spaceを $`(\alpha,\beta)`$ の2次元平面へ落とし、
 
 - configurationの存在領域
 - 計量
@@ -1857,15 +1855,15 @@ $$
 
 現在の3D.pyで用いている存在条件は、
 
-$$
+```math
 \left|
 \frac{\rho^2+l_2^2-l_3^2}
 {2l_2\rho}
 \right|
 \le 1
-$$
+```
 
-であり、これはbar $l_3$ を含めて5-barのgeometryが成立するかどうか、すなわちcompatibilityのみを判定している。
+であり、これはbar $`l_3`$ を含めて5-barのgeometryが成立するかどうか、すなわちcompatibilityのみを判定している。
 
 現時点ではbar同士の自己交差・衝突は考慮していない。
 
@@ -1873,27 +1871,27 @@ $$
 
 次の段階では、configuration space上で衝突領域を区別できるようにしたい。
 
-### B. $(\alpha,\beta)$ への射影では2つのassembly modeが重なる
+### B. $`(\alpha,\beta)`$ への射影では2つのassembly modeが重なる
 
 現在の5-barでは、
 
-$$
+```math
 \gamma_+(\alpha,\beta),
 \qquad
 \gamma_-(\alpha,\beta)
-$$
+```
 
 という2つのconfigurationが存在する。
 
 したがって3次元configuration spaceを単純に
 
-$$
+```math
 (\alpha,\beta,\gamma)
 \longrightarrow
 (\alpha,\beta)
-$$
+```
 
-と射影すると、異なる2つのassembly modeが同じ $(\alpha,\beta)$ に重なる。
+と射影すると、異なる2つのassembly modeが同じ $`(\alpha,\beta)`$ に重なる。
 
 このため、2次元configuration landscapeとしてどのように表示・管理するかは未決定であり、今後検討する。
 
@@ -1909,13 +1907,13 @@ $$
 
 その結果として、局所的な計量改善だけでは望ましいflat stateへ到達できない例が得られるかを検証し、
 
-$$
+```math
 \boxed{
 \text{local metric improvement}
 \neq
 \text{future folding success}
 }
-$$
+```
 
 となる問題の存在を、configuration space上で説明できるかを確認する。
 
