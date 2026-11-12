@@ -1555,12 +1555,9 @@ deployable structuresでは、複雑な立体形状を限られた収納空間�
 比較の意図は、川口型のように設計者側が定めた計量に基づいて局所的に探索方向を決める場合、その計量によっては到達しにくい状態や、局所的には悪化するが将来的には成功につながる経路を選びにくい場合があることを可視化することにある。
 
 確認したい中心的な関係は、
+
 ```math
-\boxed{
-\text{local metric improvement}
-\neq
-\text{future folding success}
-}
+\boxed{\mathrm{local\ metric\ improvement}\neq\mathrm{future\ folding\ success}}
 ```
 
 である。
@@ -1569,9 +1566,10 @@ deployable structuresでは、複雑な立体形状を限られた収納空間�
 
 ## 24.2 4-bar linkageによる基本確認
 
-まず2D.pyで4-bar linkageのconfiguration spaceを描いた。
+まず `2D.py` で4-bar linkageのconfiguration spaceを描いた。
 
 4-barは1自由度であり、2つの角度を状態変数として取ると、
+
 ```math
 F(\alpha,\beta)=0
 ```
@@ -1591,44 +1589,37 @@ F(\alpha,\beta)=0
 ## 24.3 5-bar linkageのconfiguration space
 
 5-barを
+
 ```math
 O_L-A-C-B-O_R
 ```
 
 というclosed chainとして扱う。
 
-固定節点間距離を d、各bar長を
+固定節点間距離を $d$、各bar長を
+
 ```math
-l_1=|O_LA|,
-\qquad
-l_2=|AC|,
-\qquad
-l_3=|CB|,
-\qquad
-l_4=|BO_R|
+l_1=|O_LA|,\qquad l_2=|AC|,\qquad l_3=|CB|,\qquad l_4=|BO_R|
 ```
 
 とする。
 
 状態変数として3つの絶対角
+
 ```math
-\alpha=\angle(O_LA,+x),
-\qquad
-\beta=\angle(O_RB,+x),
-\qquad
-\gamma=\angle(AC,+x)
+\alpha=\angle(O_LA,+x),\qquad \beta=\angle(O_RB,+x),\qquad \gamma=\angle(AC,+x)
 ```
 
 を用いる。
 
 固定節点を
+
 ```math
-O_L=(0,0),
-\qquad
-O_R=(d,0)
+O_L=(0,0),\qquad O_R=(d,0)
 ```
 
 とすると、
+
 ```math
 A=
 \begin{bmatrix}
@@ -1641,8 +1632,7 @@ B=
 d+l_4\cos\beta\\
 l_4\sin\beta
 \end{bmatrix},
-```
-```math
+\qquad
 C=
 \begin{bmatrix}
 l_1\cos\alpha+l_2\cos\gamma\\
@@ -1652,23 +1642,21 @@ l_1\sin\alpha+l_2\sin\gamma
 
 となる。
 
-残るbar CBの長さ一定条件
+残るbar $CB$ の長さ一定条件
+
 ```math
 |B-C|=l_3
 ```
 
 より、
+
 ```math
 \boxed{
 F(\alpha,\beta,\gamma)
 =
-\left(
-d+l_4\cos\beta-l_1\cos\alpha-l_2\cos\gamma
-\right)^2
+\left(d+l_4\cos\beta-l_1\cos\alpha-l_2\cos\gamma\right)^2
 +
-\left(
-l_4\sin\beta-l_1\sin\alpha-l_2\sin\gamma
-\right)^2
+\left(l_4\sin\beta-l_1\sin\alpha-l_2\sin\gamma\right)^2
 -l_3^2
 =0
 }
@@ -1677,45 +1665,36 @@ l_4\sin\beta-l_1\sin\alpha-l_2\sin\gamma
 を得る。
 
 3変数に対して独立な拘束条件が1つなので、正則点では2自由度となり、
+
 ```math
-\mathcal C
-=
-\left\{
-(\alpha,\beta,\gamma)
-\mid
-F(\alpha,\beta,\gamma)=0
-\right\}
+\mathcal C=\left\{(\alpha,\beta,\gamma)\mid F(\alpha,\beta,\gamma)=0\right\}
 ```
 
 は3次元空間内の2次元曲面として表される。
 
 ## 24.4 gammaの解析的計算と2つのassembly mode
 
-実装では、alphaとbetaを格子状に与え、gammaを解析的に求める。
+実装では、$\alpha$ と $\beta$ を格子状に与え、$\gamma$ を解析的に求める。
+
 ```math
-\mathbf r=B-A,
-\qquad
-\rho=|\mathbf r|,
-\qquad
-\theta=\mathrm{atan2}(r_y,r_x)
+\mathbf r=B-A,\qquad \rho=|\mathbf r|,\qquad \theta=\mathrm{atan2}(r_y,r_x)
 ```
 
 とすると、
+
 ```math
-\cos(\gamma-\theta)
-=
-\frac{\rho^2+l_2^2-l_3^2}{2l_2\rho}
+\cos(\gamma-\theta)=\frac{\rho^2+l_2^2-l_3^2}{2l_2\rho}
 ```
 
 より、
+
 ```math
 \boxed{
 \gamma_\pm
 =
 \theta
 \pm
-\arccos
-\left(
+\arccos\left(
 \frac{\rho^2+l_2^2-l_3^2}{2l_2\rho}
 \right)
 }
@@ -1724,135 +1703,105 @@ F(\alpha,\beta,\gamma)=0
 となる。
 
 したがって、
+
 ```math
-\left|
-\frac{\rho^2+l_2^2-l_3^2}{2l_2\rho}
-\right|
-\le 1
+\left|\frac{\rho^2+l_2^2-l_3^2}{2l_2\rho}\right|\le 1
 ```
 
 を満たす領域をcompatibleなconfigurationとして扱う。
 
-同じ alpha, beta に対して通常2つの gamma が存在するため、現在の5-barでは gamma-plus と gamma-minus に対応する2枚のsurfaceが現れる。
+同じ $\alpha,\beta$ に対して通常2つの $\gamma$ が存在するため、現在の5-barでは $\gamma_+$ と $\gamma_-$ に対応する2枚のsurfaceが現れる。
 
-ただし、2自由度系だから一般にsurfaceが2枚になるわけではない。今回の5-barで、同じ alpha, beta に対する節点 C の位置が通常2通り存在することによる。
+ただし、2自由度系だから一般にsurfaceが2枚になるわけではない。今回の5-barで、同じ $\alpha,\beta$ に対する節点 $C$ の位置が通常2通り存在することによる。
 
-表示では gamma を -pi から pi の範囲へ正規化している。周期境界で人工的な縦壁が描かれることを避けるため、隣接格子点間で
+表示では $\gamma$ を $[-\pi,\pi)$ に正規化している。周期境界で人工的な縦壁が描かれることを避けるため、隣接格子点間で
+
 ```math
 |\Delta\gamma|>\pi
 ```
 
-となる場所を検出し、表示用データだけNaNとしてsurfaceを切っている。
+となる場所を検出し、表示用データだけ `NaN` としてsurfaceを切っている。
 
 ## 24.5 configuration surface上のmetric表示
 
-現在の3D.pyでは、各configurationに対して
+現在の `3D.py` では、各configurationに対して
+
 ```math
-U
-=
-|y_A-h|
-+
-|y_C-h|
-+
-|y_B-h|
+U=|y_A-h|+|y_C-h|+|y_B-h|
 ```
 
 を計算し、surfaceの色として表示している。
 
 ここで、
+
 ```math
-y_A=l_1\sin\alpha,
-\qquad
-y_C=l_1\sin\alpha+l_2\sin\gamma,
-\qquad
+y_A=l_1\sin\alpha,\qquad
+y_C=l_1\sin\alpha+l_2\sin\gamma,\qquad
 y_B=l_4\sin\beta
 ```
 
 である。
 
-この U は現時点では物理的なポテンシャルエネルギーというより、平坦化の程度を表す幾何学的metricとして用いている。
+この $U$ は現時点では物理的なポテンシャルエネルギーというより、平坦化の程度を表す幾何学的metricとして用いている。
 
-gamma-plusとgamma-minusの両surfaceに共通の最小値・最大値を用いてcolor scaleを正規化することで、同じmetric値が同じ色になるようにしている。
+$\gamma_+$ と $\gamma_-$ の両surfaceに共通の最小値・最大値を用いてcolor scaleを正規化することで、同じmetric値が同じ色になるようにしている。
 
 ## 24.6 collision領域のconfiguration-space表現
 
 configuration space上で、compatibleではあるが自己交差しているconfigurationも区別する。
 
-一般形状では節点座標から衝突判定を行う必要があるが、この5-barでは全節点座標が alpha, beta, gamma の関数として明示されているため、各非隣接barの線分交差条件をconfiguration-space上で直接評価できる。
+一般形状では節点座標から衝突判定を行う必要があるが、この5-barでは全節点座標が $\alpha,\beta,\gamma$ の関数として明示されているため、各非隣接barの線分交差条件をconfiguration-space上で直接評価できる。
 
-2次元の線分 PQ と RS について、
+2次元の線分 $PQ$ と $RS$ について、
+
 ```math
-s_1=(Q-P)\times(R-P),
-\qquad
-s_2=(Q-P)\times(S-P),
-```
-```math
-s_3=(S-R)\times(P-R),
-\qquad
+s_1=(Q-P)\times(R-P),\qquad
+s_2=(Q-P)\times(S-P),\qquad
+s_3=(S-R)\times(P-R),\qquad
 s_4=(S-R)\times(Q-R)
 ```
 
 とする。
 
 一般位置でのproper intersectionは、
+
 ```math
-s_1s_2<0
-\qquad\text{and}\qquad
-s_3s_4<0
+s_1s_2<0\qquad\land\qquad s_3s_4<0
 ```
 
 で判定する。
 
 現在は5-barについて、
 
-- OL-A と B-OR
-- A-C と B-OR
-- OL-A と C-B
+- $O_LA$ と $BO_R$
+- $AC$ と $BO_R$
+- $O_LA$ と $CB$
 
 の3組を判定している。
 
 各pairについて交差判定値を計算し、どれか1組でも衝突するconfigurationをcollisionとして扱う。
 
-gamma-plusとgamma-minusでは実際の形状が異なるため、
+$\gamma_+$ と $\gamma_-$ では実際の形状が異なるため、
+
 ```math
-\mathrm{collision}_+(\alpha,\beta),
-\qquad
-\mathrm{collision}_-(\alpha,\beta)
+\mathrm{collision}_+(\alpha,\beta),\qquad \mathrm{collision}_-(\alpha,\beta)
 ```
 
 を別々のBoolean fieldとして持つ。
 
-すなわち、各sheetについて
-```math
-\text{compatible configuration}
-\longrightarrow
-\text{collision / collision-free}
-```
-
-を分類している。
+すなわち、各sheetについてcompatible configurationをcollision / collision-freeに分類している。
 
 なお、現在の判定は線分内部同士のproper intersectionを対象としており、端点接触や完全な共線重なりの扱いは別途検討する。
 
 ## 24.7 potentialとcollisionの同時表示
 
-surfaceの基本色はmetric Uから決定する。
-
-その上で、collision-plusまたはcollision-minusがTrueとなる場所だけRGB値を一定割合まで暗くする。
+surfaceの基本色はmetric $U$ から決定する。その上で、collision-plusまたはcollision-minusが `True` となる場所だけRGB値を一定割合まで暗くする。
 
 したがって現在の3D図では、
+
 ```math
-\boxed{
-\text{color hue}
-=
-\text{metric value}
-}
-```
-```math
-\boxed{
-\text{darkened region}
-=
-\text{collision configuration}
-}
+\boxed{\mathrm{color\ hue}=\mathrm{metric\ value}},\qquad
+\boxed{\mathrm{darkened\ region}=\mathrm{collision\ configuration}}
 ```
 
 という2種類の情報を同一surface上に重ねている。
@@ -1864,16 +1813,15 @@ surfaceの基本色はmetric Uから決定する。
 次の段階では、川口型の探索計算とconfiguration-space可視化を分離する。
 
 川口型の別プログラムで、各stepの節点座標
+
 ```math
-X^{(0)},
-X^{(1)},
-\ldots,
-X^{(N)}
+X^{(0)},X^{(1)},\ldots,X^{(N)}
 ```
 
 を保存する。
 
-3D.pyでは、その節点座標から各stepの状態を
+`3D.py` では、その節点座標から各stepの状態を
+
 ```math
 (\alpha_t,\beta_t,\gamma_t)
 ```
@@ -1881,30 +1829,20 @@ X^{(N)}
 へ変換する。
 
 具体的には、
+
 ```math
-\alpha_t
-=
-\mathrm{atan2}
-(A_y-O_{L,y},A_x-O_{L,x}),
-```
-```math
-\beta_t
-=
-\mathrm{atan2}
-(B_y-O_{R,y},B_x-O_{R,x}),
-```
-```math
-\gamma_t
-=
-\mathrm{atan2}
-(C_y-A_y,C_x-A_x)
+\alpha_t=\mathrm{atan2}(A_y-O_{L,y},A_x-O_{L,x}),
+\qquad
+\beta_t=\mathrm{atan2}(B_y-O_{R,y},B_x-O_{R,x}),
+\qquad
+\gamma_t=\mathrm{atan2}(C_y-A_y,C_x-A_x)
 ```
 
 とする。
 
 得られたtrajectoryを3D configuration surface上へscatterとして重ねる。
 
-まずscatterで各stepを表示し、必要に応じて後からlineで連結する。ただし角度が plus/minus pi の周期境界を跨ぐ場合、単純にlineで結ぶと人工的な長い線が描かれるため、その場合はsurfaceと同様に周期境界でtrajectoryを切る。
+まずscatterで各stepを表示し、必要に応じて後からlineで連結する。ただし角度が $\pm\pi$ の周期境界を跨ぐ場合、単純にlineで結ぶと人工的な長い線が描かれるため、その場合はsurfaceと同様に周期境界でtrajectoryを切る。
 
 解析結果は角度だけでなく節点座標として保存しておく。これにより、同じtrajectoryデータを物理空間での形状表示、configuration-space表示、collision再判定などへ再利用できる。
 
@@ -1923,22 +1861,18 @@ X^{(N)}
 
 を重ねる。
 
-この図から、
-
-> 設計者が与えた局所metricに従うtrajectoryがconfiguration space上をどのように進み、collision regionやflat stateとの関係でどのような経路を選ぶか
-
-を確認する。
+この図から、設計者が与えた局所metricに従うtrajectoryがconfiguration space上をどのように進み、collision regionやflat stateとの関係でどのような経路を選ぶかを確認する。
 
 3Dのままで研究上の主張が十分読み取れるなら、そのまま主要な可視化として使う。trajectoryやcollisionとの位置関係が読みにくい場合に限り、2次元configuration landscapeへの射影を再検討する。
 
 したがって、2次元化そのものは目的ではない。目的は、
+
 ```math
 \boxed{
-\text{現在の局所的な幾何学的良さ}
+\mathrm{current\ local\ geometric\ quality}
 \neq
-\text{将来のfolding success}
+\mathrm{future\ folding\ success}
 }
 ```
 
 となる状況をconfiguration space上で明確に可視化できるかを検証することである。
-
