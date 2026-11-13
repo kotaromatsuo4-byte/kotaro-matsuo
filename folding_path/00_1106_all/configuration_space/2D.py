@@ -3,10 +3,12 @@ import matplotlib.pyplot as plt
 
 plt.rcParams.update({
     "font.family": "Times New Roman",
+    "mathtext.fontset": "stix",
+    "axes.unicode_minus": False,    
     "font.size": 12,
-    "axes.labelsize": 12,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
+    "axes.labelsize": 15,
+    "xtick.labelsize": 12,
+    "ytick.labelsize": 12,
     "legend.fontsize": 10,
     "axes.linewidth": 0.9,
     "savefig.dpi": 600,
@@ -33,7 +35,7 @@ fig, ax = plt.subplots()
 # 等高線
 cs = ax.contour(alpha, beta, F, levels=[0])
 
-path = cs.collections[0].get_paths()[0]
+path = cs.get_paths()[0]
 verts = path.vertices
 a = verts[:,0]
 b = verts[:,1]
